@@ -463,9 +463,12 @@ export function AppProvider({ children }) {
         // Recruiter
         recruiterUser: (currentUser?.role === 'RECRUITER' ? currentUser : recruiterUser),
         recruiterProfile: {
-          ...mockRecruiterData.profile,
-          name: currentUser?.role === 'RECRUITER' ? currentUser.name : (recruiterUser ? recruiterUser.name : mockRecruiterData.profile.name)
+          name: currentUser?.role === 'RECRUITER' ? currentUser.name : (recruiterUser ? recruiterUser.name : "Meera Kapoor"),
+          title: "Technical Talent Lead & Engineering Recruiter",
+          company: recruiterUser?.domain || mockRecruiterData?.company || "TechNova Solutions",
+          logo: mockRecruiterData?.logo || "TN"
         },
+        companyData: mockRecruiterData,
         jobs,
         candidates,
         refreshCandidates,

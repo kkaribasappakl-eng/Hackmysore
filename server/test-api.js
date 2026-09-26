@@ -866,6 +866,97 @@ async function runTests() {
       recordTest('Submission Details with Anti-Gaming & AI Reports', false, e.message);
     }
 
+    // TEST 45: Role-Based Authentication & Cryptographic Token Generation
+    let testToken = null;
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'rahul@example.com', password: 'password123', role: 'BUILDER' })
+      });
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && body.data?.token && body.data?.user?.role === 'BUILDER') {
+        testToken = body.data.token;
+        recordTest('Role-Based Auth Login (Builder/Reviewer/Recruiter)', true);
+      } else {
+        recordTest('Role-Based Auth Login (Builder/Reviewer/Recruiter)', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Role-Based Auth Login (Builder/Reviewer/Recruiter)', false, e.message);
+    }
+
+    // TEST 46: Role Mismatch Protection (Enforces strict portal separation)
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'rahul@example.com', password: 'password123', role: 'REVIEWER' })
+      });
+      if (res.status === 403) {
+        recordTest('Role Mismatch Protection (Strict Portal Separation)', true);
+      } else {
+        recordTest('Role Mismatch Protection (Strict Portal Separation)', false, `Expected 403 got ${res.status}`);
+      }
+    } catch (e) {
+      recordTest('Role Mismatch Protection (Strict Portal Separation)', false, e.message);
+    }
+
+    // TEST 47: Protected /api/auth/me Endpoint
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/me`, {
+        headers: { 'Authorization': `Bearer ${testToken}` }
+      });
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && body.data?.email === 'rahul@example.com') {
+        recordTest('Protected Session Verification (/api/auth/me)', true);
+      } else {
+        recordTest('Protected Session Verification (/api/auth/me)', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Protected Session Verification (/api/auth/me)', false, e.message);
+    }
+
+    // TEST 48: Resume Skill Extraction & Tailored Assessment Generation
+    try {
+      const samplesRes = await fetch(`${BASE_URL}/api/resume/samples`);
+      const samples = await samplesRes.json();
+      const sampleText = samples.data?.[0]?.sampleText || "Java, Spring Boot, SQL, PostgreSQL, REST API, Microservices, Kafka";
+
+      const res = await fetch(`${BASE_URL}/api/resume/upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${testToken}`
+        },
+        body: JSON.stringify({
+          builder_id: 1,
+          filename: 'rahul_backend_resume.pdf',
+          resume_text: sampleText
+        })
+      });
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && Array.isArray(body.data?.extracted_skills) && body.data?.assessment_id) {
+        recordTest('Resume Skill Extraction & Tailored Assessment Generation', true);
+      } else {
+        recordTest('Resume Skill Extraction & Tailored Assessment Generation', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Resume Skill Extraction & Tailored Assessment Generation', false, e.message);
+    }
+
+    // TEST 49: Builder Resume Record Retrieval
+    try {
+      const res = await fetch(`${BASE_URL}/api/resume/builder/1`);
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && body.data?.extracted_skills) {
+        recordTest('Builder Resume & Assessment Match Retrieval', true);
+      } else {
+        recordTest('Builder Resume & Assessment Match Retrieval', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Builder Resume & Assessment Match Retrieval', false, e.message);
+    }
+
   } finally {
     if (serverInstance) {
       serverInstance.close();

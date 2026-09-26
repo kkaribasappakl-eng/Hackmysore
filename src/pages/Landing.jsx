@@ -58,8 +58,7 @@ export default function Landing() {
           {/* Call to Actions */}
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
             <Link
-              to="/builder"
-              onClick={() => setActiveRole('builder')}
+              to="/login?role=BUILDER"
               className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-sm shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 transition-all flex items-center gap-2"
             >
               <span>Enter as Builder</span>
@@ -69,8 +68,7 @@ export default function Landing() {
             </Link>
 
             <Link
-              to="/reviewer"
-              onClick={() => setActiveRole('reviewer')}
+              to="/login?role=REVIEWER"
               className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm shadow-lg shadow-purple-600/20 hover:shadow-purple-600/35 transition-all flex items-center gap-2"
             >
               <span>Enter as Reviewer</span>
@@ -80,21 +78,13 @@ export default function Landing() {
             </Link>
 
             <Link
-              to="/recruiter"
-              onClick={() => setActiveRole('recruiter')}
+              to="/login?role=RECRUITER"
               className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/35 transition-all flex items-center gap-2"
             >
               <span>Enter as Recruiter</span>
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-            </Link>
-
-            <Link
-              to="/role-selection"
-              className="px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-medium text-sm transition-all"
-            >
-              Role Switcher
             </Link>
           </div>
 

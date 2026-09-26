@@ -1,21 +1,25 @@
 // src/pages/builder/BuilderDashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { getUser, getBuilderScorecards } from '../../services/api';
 
 export default function BuilderDashboard() {
-  const { builderProfile, setActiveScorecardId } = useApp();
+  const location = useLocation();
+  const { builderProfile, setActiveScorecardId, currentUser, uploadedResume } = useApp();
   const [profile, setProfile] = useState(builderProfile);
   const [scorecards, setScorecards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const isUnauthorized = new URLSearchParams(location.search).get('unauthorized') === 'true';
+
   const fetchDashboardData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const userRes = await getUser(1);
+      const bId = currentUser?.id || 1;
+      const userRes = await getUser(bId);
       if (userRes.success && userRes.data) {
         setProfile({
           ...builderProfile,
@@ -25,7 +29,7 @@ export default function BuilderDashboard() {
         });
       }
 
-      const scRes = await getBuilderScorecards(1);
+      const scRes = await getBuilderScorecards(bId);
       if (scRes.success && Array.isArray(scRes.data)) {
         setScorecards(scRes.data);
         if (scRes.data.length > 0) {
@@ -41,13 +45,27 @@ export default function BuilderDashboard() {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [currentUser]);
 
   const latestScorecard = scorecards.length > 0 ? scorecards[0] : null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       
+      {/* Role Mismatch Redirection Notice */}
+      {isUnauthorized && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="font-semibold">Role Restricted Portal:</span>
+            <span>You attempted to access a Reviewer or Recruiter page. SignalCraft strictly isolates dashboards by authenticated persona.</span>
+          </div>
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-200">
+            Builder Mode Active
+          </span>
+        </div>
+      )}
+
       {/* Error Banner with Retry */}
       {error && (
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center justify-between">
@@ -75,7 +93,7 @@ export default function BuilderDashboard() {
                 {loading ? "Loading builder..." : profile.name}
               </h1>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
-                Builder (ID: 1)
+                Builder ({currentUser?.email || 'rahul@example.com'})
               </span>
             </div>
             <p className="text-slate-400 text-sm mt-0.5">{profile.role} • Bengaluru, India</p>
@@ -94,10 +112,10 @@ export default function BuilderDashboard() {
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto relative z-10">
           <Link
-            to="/builder/challenges"
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm text-center shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
+            to="/builder/resume"
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-sm text-center shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2"
           >
-            <span>Browse Challenges</span>
+            <span>Resume & Assessment</span>
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
@@ -107,6 +125,44 @@ export default function BuilderDashboard() {
             className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-sm text-center transition-all"
           >
             View Scorecard
+          </Link>
+        </div>
+      </div>
+
+      {/* RESUME & TAILORED ASSESSMENT FLOW BANNER */}
+      <div className="p-6 rounded-2xl bg-slate-900/90 border border-blue-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative overflow-hidden">
+        <div className="space-y-1.5 max-w-2xl">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono uppercase tracking-wider text-blue-400 font-semibold">
+              Step 1 of Verification Journey
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-mono">
+              Tailored Medium Challenge
+            </span>
+          </div>
+          <h2 className="text-lg font-bold text-white">
+            Resume-Based Practical Assessment
+          </h2>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Upload your resume or paste experience claims. SignalCraft extracts verified competencies and automatically calibrates a medium-level practical assessment testing those exact skills.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 w-full md:w-auto">
+          <Link
+            to="/builder/resume"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs text-center shadow-md transition-all flex items-center justify-center gap-1.5"
+          >
+            <span>Upload / Update Resume</span>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
+          <Link
+            to="/builder/assessment"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium text-center transition-all"
+          >
+            Take Assessment →
           </Link>
         </div>
       </div>

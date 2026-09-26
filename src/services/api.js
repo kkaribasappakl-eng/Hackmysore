@@ -1,20 +1,53 @@
 // src/services/api.js
-// SignalCraft Centralized API Client
+// SignalCraft Centralized API Client with Cryptographic Role Authentication
 
 const API_BASE_URL = 'http://localhost:4000/api';
+
+// In-memory + LocalStorage token storage
+let authToken = typeof window !== 'undefined' ? localStorage.getItem('signalcraft_token') : null;
+
+export function setAuthToken(token) {
+  authToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem('signalcraft_token', token);
+    } else {
+      localStorage.removeItem('signalcraft_token');
+    }
+  }
+}
+
+export function getAuthToken() {
+  if (!authToken && typeof window !== 'undefined') {
+    authToken = localStorage.getItem('signalcraft_token');
+  }
+  return authToken;
+}
+
+export function clearAuthToken() {
+  authToken = null;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('signalcraft_token');
+    localStorage.removeItem('signalcraft_user');
+  }
+}
 
 /**
  * Reusable request helper that:
  * - Sends HTTP requests
+ * - Injects Bearer authorization token
  * - Parses JSON responses
  * - Handles HTTP and network errors
  * - Returns consistent structured responses
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
+  const token = getAuthToken();
+
   const defaultHeaders = {
     'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
 
   const config = {
@@ -64,12 +97,57 @@ async function request(endpoint, options = {}) {
   }
 }
 
+// 0. Authentication & Role Session
+export async function loginUser(credentials) {
+  const res = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials)
+  });
+  if (res.success && res.data?.token) {
+    setAuthToken(res.data.token);
+    if (typeof window !== 'undefined' && res.data.user) {
+      localStorage.setItem('signalcraft_user', JSON.stringify(res.data.user));
+    }
+  }
+  return res;
+}
+
+export async function getAuthMe() {
+  return request('/auth/me');
+}
+
+export async function logoutUser() {
+  const res = await request('/auth/logout', { method: 'POST' });
+  clearAuthToken();
+  return res;
+}
+
+export async function getDemoUsers() {
+  return request('/auth/demo-users');
+}
+
 // 1. Health Check
 export async function getHealth() {
   return request('/health');
 }
 
-// 2. Users
+// 2. Resume & Skill Extraction
+export async function uploadResume(resumePayload) {
+  return request('/resume/upload', {
+    method: 'POST',
+    body: JSON.stringify(resumePayload)
+  });
+}
+
+export async function getBuilderResume(builderId) {
+  return request(`/resume/builder/${builderId}`);
+}
+
+export async function getResumeSamples() {
+  return request('/resume/samples');
+}
+
+// 3. Users
 export async function getUsers() {
   return request('/users');
 }
@@ -82,7 +160,7 @@ export async function getUsersByRole(role) {
   return request(`/users/role/${encodeURIComponent(role)}`);
 }
 
-// 3. Jobs
+// 4. Jobs
 export async function getJobs() {
   return request('/jobs');
 }
@@ -98,7 +176,7 @@ export async function createJob(jobData) {
   });
 }
 
-// 4. Challenges
+// 5. Challenges
 export async function getChallenges() {
   return request('/challenges');
 }
@@ -111,7 +189,7 @@ export async function getChallengesByDomain(domain) {
   return request(`/challenges/domain/${encodeURIComponent(domain)}`);
 }
 
-// 5. Assessments
+// 6. Assessments
 export async function startAssessment(challengeId, builderId = 1) {
   return request('/assessments', {
     method: 'POST',
@@ -149,7 +227,7 @@ export async function completeAssessment(id) {
   });
 }
 
-// 6. Submissions
+// 7. Submissions
 export async function createSubmission(submissionData) {
   return request('/submissions', {
     method: 'POST',
@@ -177,7 +255,7 @@ export async function runAIAnalysis(submissionId) {
   });
 }
 
-// 7. Reviews
+// 8. Reviews
 export async function getReviewQueue(params = {}) {
   const queryParams = new URLSearchParams();
   if (params.reviewer_id) queryParams.append('reviewer_id', params.reviewer_id);
@@ -194,7 +272,7 @@ export async function createReview(reviewData) {
   });
 }
 
-// 8. Scorecards
+// 9. Scorecards
 export async function generateScorecard(scorecardData) {
   return request('/scorecards/generate', {
     method: 'POST',
@@ -214,7 +292,7 @@ export async function verifyScorecard(scorecardId) {
   return request(`/scorecards/verify/${encodeURIComponent(scorecardId)}`);
 }
 
-// 9. Candidates & Rankings
+// 10. Candidates & Rankings
 export async function getCandidates(filters = {}) {
   const queryParams = new URLSearchParams();
   if (filters.skill && filters.skill !== 'All') {
@@ -256,7 +334,7 @@ export async function getRankingEvents() {
   return request('/rankings/events');
 }
 
-// 10. Shortlist
+// 11. Shortlist
 export async function shortlistCandidate(shortlistData) {
   return request('/shortlist', {
     method: 'POST',

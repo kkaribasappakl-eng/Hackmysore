@@ -1,30 +1,87 @@
-// src/components/Navbar.jsx
+// client/src/components/Navbar.jsx
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 export default function Navbar() {
   const location = useLocation();
-  const { activeRole, setActiveRole, shortlistCount } = useApp();
+  const navigate = useNavigate();
+  const { currentUser, logout, shortlistCount } = useApp();
 
-  const navLinks = [
-    { label: 'Home', path: '/' },
-    { label: 'Builder', path: '/builder', role: 'builder' },
-    { label: 'Reviewer', path: '/reviewer', role: 'reviewer' },
-    { label: 'Recruiter', path: '/recruiter', role: 'recruiter' },
-  ];
+  const handleSignOut = async () => {
+    await logout();
+    navigate('/login');
+  };
+
+  const userRole = currentUser?.role?.toUpperCase();
+
+  // Role-specific navigation links
+  const getNavLinks = () => {
+    if (!currentUser) {
+      return [
+        { label: 'Home', path: '/' },
+        { label: 'Platform Philosophy', path: '/#evidence' }
+      ];
+    }
+
+    if (userRole === 'BUILDER') {
+      return [
+        { label: 'Dashboard', path: '/builder' },
+        { label: 'Upload Resume', path: '/builder/resume' },
+        { label: 'Challenges', path: '/builder/challenges' },
+        { label: 'My Scorecard', path: '/builder/scorecard' }
+      ];
+    }
+
+    if (userRole === 'REVIEWER') {
+      return [
+        { label: 'Reviewer Dashboard', path: '/reviewer' },
+        { label: 'Review Queue', path: '/reviewer/queue' }
+      ];
+    }
+
+    if (userRole === 'RECRUITER') {
+      return [
+        { label: 'Recruiter Dashboard', path: '/recruiter' },
+        { label: 'Post Job', path: '/recruiter/create-job' },
+        { label: 'Candidate Discovery', path: '/recruiter/candidates' },
+        { label: 'Scorecards', path: '/recruiter/scorecard' }
+      ];
+    }
+
+    return [{ label: 'Home', path: '/' }];
+  };
+
+  const navLinks = getNavLinks();
 
   const getRoleBadge = () => {
-    if (location.pathname.startsWith('/builder')) {
-      return <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">Builder Mode</span>;
+    if (!currentUser) return null;
+
+    if (userRole === 'BUILDER') {
+      return (
+        <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+          <span>Builder • {currentUser.name}</span>
+        </span>
+      );
     }
-    if (location.pathname.startsWith('/reviewer')) {
-      return <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">Reviewer Mode</span>;
+
+    if (userRole === 'REVIEWER') {
+      return (
+        <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+          <span>Reviewer • {currentUser.name}</span>
+        </span>
+      );
     }
-    if (location.pathname.startsWith('/recruiter')) {
+
+    if (userRole === 'RECRUITER') {
       return (
         <div className="flex items-center gap-2">
-          <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Recruiter Mode</span>
+          <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span>Recruiter • {currentUser.name}</span>
+          </span>
           {shortlistCount > 0 && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
               ★ {shortlistCount} Shortlisted
@@ -33,6 +90,7 @@ export default function Navbar() {
         </div>
       );
     }
+
     return null;
   };
 
@@ -51,7 +109,7 @@ export default function Navbar() {
             <div className="flex flex-col">
               <span className="text-lg font-bold tracking-tight text-white flex items-center gap-1.5">
                 SignalCraft
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Prototype</span>
+                <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">RBAC</span>
               </span>
               <span className="text-[11px] text-slate-400 hidden sm:block">Technical Verification Layer</span>
             </div>
@@ -64,7 +122,7 @@ export default function Navbar() {
         </div>
 
         {/* Center / Navigation Links */}
-        <nav className="flex items-center gap-1 sm:gap-2">
+        <nav className="hidden sm:flex items-center gap-1 sm:gap-2">
           {navLinks.map((link) => {
             const isActive = link.path === '/' 
               ? location.pathname === '/' 
@@ -73,10 +131,7 @@ export default function Navbar() {
               <Link
                 key={link.path}
                 to={link.path}
-                onClick={() => {
-                  if (link.role) setActiveRole(link.role);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
                   isActive
                     ? 'bg-slate-800/90 text-white shadow-inner border border-slate-700/60'
                     : 'text-slate-300 hover:text-white hover:bg-slate-900/60'
@@ -88,17 +143,34 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Action Button: Role Selection */}
+        {/* Action Button: Sign In or Sign Out */}
         <div className="flex items-center gap-3">
-          <Link
-            to="/role-selection"
-            className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-900 hover:bg-slate-800 hover:text-white border border-slate-700/80 rounded-lg transition-all"
-          >
-            <span>Switch Role</span>
-            <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </Link>
+          {currentUser ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-mono hidden lg:inline">
+                {currentUser.email}
+              </span>
+              <button
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded-lg transition-all"
+              >
+                <span>Sign Out</span>
+                <svg className="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/20 rounded-lg transition-all"
+            >
+              <span>Sign In</span>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </Link>
+          )}
         </div>
 
       </div>

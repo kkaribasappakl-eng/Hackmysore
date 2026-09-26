@@ -5,6 +5,8 @@ import cors from 'cors';
 import { initDB, db } from './db.js';
 
 // Route imports
+import authRouter from './routes/auth.js';
+import resumeRouter from './routes/resume.js';
 import usersRouter from './routes/users.js';
 import jobsRouter from './routes/jobs.js';
 import challengesRouter from './routes/challenges.js';
@@ -40,6 +42,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // Mount modular feature routes
+app.use('/api/auth', authRouter);
+app.use('/api/resume', resumeRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/challenges', challengesRouter);

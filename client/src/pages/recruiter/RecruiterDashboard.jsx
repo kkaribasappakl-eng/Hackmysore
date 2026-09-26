@@ -1,15 +1,18 @@
-// src/pages/recruiter/RecruiterDashboard.jsx
+// client/src/pages/recruiter/RecruiterDashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { getUser, getJobs } from '../../services/api';
 
 export default function RecruiterDashboard() {
-  const { companyData: mockCompany, jobs: contextJobs, shortlistCount } = useApp();
+  const location = useLocation();
+  const { companyData: mockCompany, jobs: contextJobs, shortlistCount, currentUser } = useApp();
   const [recruiter, setRecruiter] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const isUnauthorized = new URLSearchParams(location.search).get('unauthorized') === 'true';
 
   const fetchRecruiterData = async () => {
     setLoading(true);
@@ -74,6 +77,20 @@ export default function RecruiterDashboard() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       
+      {/* Role Mismatch Redirection Notice */}
+      {isUnauthorized && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="font-semibold">Role Restricted Portal:</span>
+            <span>You attempted to access a Builder or Reviewer route. SignalCraft strictly enforces persona isolation.</span>
+          </div>
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-200">
+            Recruiter Mode Active
+          </span>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/70 border border-emerald-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-600/10 blur-3xl pointer-events-none" />

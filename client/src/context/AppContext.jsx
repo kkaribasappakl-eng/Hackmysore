@@ -1,4 +1,4 @@
-// src/context/AppContext.jsx
+// client/src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   getHealth,
@@ -10,7 +10,16 @@ import {
   createReview as apiCreateReview,
   getCandidates,
   shortlistCandidate as apiShortlistCandidate,
-  getBuilderScorecards
+  getBuilderScorecards,
+  loginUser,
+  getAuthMe,
+  logoutUser,
+  getDemoUsers,
+  uploadResume as apiUploadResume,
+  getBuilderResume,
+  getAuthToken,
+  setAuthToken,
+  clearAuthToken
 } from '../services/api';
 
 import {
@@ -27,10 +36,23 @@ const AppContext = createContext();
 
 export function AppProvider({ children }) {
   // Backend availability state
-  const [backendAvailable, setBackendAvailable] = useState(null); // true | false | null (checking)
-  const [activeRole, setActiveRole] = useState(null); // 'builder' | 'reviewer' | 'recruiter' | null
+  const [backendAvailable, setBackendAvailable] = useState(null);
 
-  // Flow State Tracking (Connects Builder -> Reviewer -> Recruiter seamlessly)
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('signalcraft_user');
+        return stored ? JSON.parse(stored) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Flow State Tracking
   const [activeAssessmentId, setActiveAssessmentId] = useState(1);
   const [activeSubmissionId, setActiveSubmissionId] = useState(1);
   const [activeReviewId, setActiveReviewId] = useState(1);
@@ -52,6 +74,7 @@ export function AppProvider({ children }) {
   const [builderUser, setBuilderUser] = useState(null);
   const [builderScorecards, setBuilderScorecards] = useState([]);
   const [challenges, setChallenges] = useState([]);
+  const [uploadedResume, setUploadedResume] = useState(null);
   const [builderSubmission, setBuilderSubmission] = useState({
     repoUrl: "https://github.com/rahul-sharma/signalcraft-order-service",
     demoUrl: "https://order-service-demo.signalcraft.dev",
@@ -69,22 +92,46 @@ export function AppProvider({ children }) {
 
   // Verify backend availability and hydrate initial state
   useEffect(() => {
-    async function initBackend() {
-      const healthRes = await getHealth();
-      if (healthRes.success) {
-        setBackendAvailable(true);
-        // Hydrate from backend API
-        loadInitialData();
-      } else {
+    async function init() {
+      setAuthLoading(true);
+      try {
+        const healthRes = await getHealth();
+        if (healthRes.success) {
+          setBackendAvailable(true);
+
+          // Verify stored token session if present
+          const token = getAuthToken();
+          if (token) {
+            const meRes = await getAuthMe();
+            if (meRes.success && meRes.data) {
+              setCurrentUser(meRes.data);
+              localStorage.setItem('signalcraft_user', JSON.stringify(meRes.data));
+            } else {
+              // Token expired or invalid
+              clearAuthToken();
+              setCurrentUser(null);
+            }
+          }
+
+          // Hydrate general data
+          await loadInitialData();
+        } else {
+          setBackendAvailable(false);
+          // Fallback to local data
+          setCandidates(mockRecruiterData.candidates);
+          setJobs(mockRecruiterData.roles);
+          setChallenges(mockChallenges);
+          setReviewQueue(mockReviewQueue);
+        }
+      } catch (err) {
+        console.warn('Init error:', err);
         setBackendAvailable(false);
-        // Fallback to local data
-        setCandidates(mockRecruiterData.candidates);
-        setJobs(mockRecruiterData.roles);
-        setChallenges(mockChallenges);
-        setReviewQueue(mockReviewQueue);
+      } finally {
+        setAuthLoading(false);
       }
     }
-    initBackend();
+
+    init();
   }, []);
 
   async function loadInitialData() {
@@ -95,7 +142,7 @@ export function AppProvider({ children }) {
         setBuilderUser(bRes.data);
       }
 
-      // 2. Load Reviewer (ID 4 or 3)
+      // 2. Load Reviewer (ID 4)
       const rRes = await getUser(4);
       if (rRes.success && rRes.data) {
         setReviewerUser(rRes.data);
@@ -147,10 +194,79 @@ export function AppProvider({ children }) {
           setActiveScorecardId(scRes.data[0].id);
         }
       }
+
+      // 9. Load latest resume for builder 1
+      const resResume = await getBuilderResume(1);
+      if (resResume.success && resResume.data) {
+        setUploadedResume(resResume.data);
+      }
     } catch (e) {
       console.warn("Failed to load initial data from backend, using fallback:", e);
     }
   }
+
+  // Authentication Handlers
+  const login = async (email, password, role) => {
+    const res = await loginUser({ email, password, role });
+    if (res.success && res.data?.user) {
+      setCurrentUser(res.data.user);
+      if (res.data.user.role === 'BUILDER') {
+        setBuilderUser(res.data.user);
+      } else if (res.data.user.role === 'REVIEWER') {
+        setReviewerUser(res.data.user);
+      } else if (res.data.user.role === 'RECRUITER') {
+        setRecruiterUser(res.data.user);
+      }
+      return { success: true, user: res.data.user };
+    }
+    return { success: false, message: res.message || 'Login failed' };
+  };
+
+  const logout = async () => {
+    await logoutUser();
+    setCurrentUser(null);
+  };
+
+  // Instant 1-Click Demo Login for Hackathon Judges
+  const quickDemoLogin = async (roleName) => {
+    const credentials = {
+      BUILDER: { email: 'rahul@example.com', password: 'password123', role: 'BUILDER' },
+      REVIEWER: { email: 'ananya@example.com', password: 'password123', role: 'REVIEWER' },
+      RECRUITER: { email: 'meera@technova.example', password: 'password123', role: 'RECRUITER' }
+    };
+
+    const target = credentials[roleName.toUpperCase()];
+    if (!target) return { success: false, message: 'Invalid demo role' };
+
+    return await login(target.email, target.password, target.role);
+  };
+
+  // Resume Upload & Skill Extraction Flow
+  const submitResume = async ({ builder_id, filename, resume_text }) => {
+    const targetBuilderId = builder_id || currentUser?.id || 1;
+    const res = await apiUploadResume({
+      builder_id: targetBuilderId,
+      filename: filename || 'resume.pdf',
+      resume_text
+    });
+
+    if (res.success && res.data) {
+      setUploadedResume(res.data);
+      if (res.data.assessment_id) {
+        setActiveAssessmentId(res.data.assessment_id);
+      }
+      // Update builder user skills in state
+      if (currentUser?.id === targetBuilderId) {
+        setCurrentUser(prev => ({
+          ...prev,
+          skills: res.data.extracted_skills,
+          domain: res.data.domain
+        }));
+      }
+      return { success: true, data: res.data };
+    }
+    return { success: false, message: res.message || 'Failed to analyze resume' };
+  };
 
   // Refresh functions for components
   const refreshJobs = async () => {
@@ -177,7 +293,8 @@ export function AppProvider({ children }) {
   };
 
   const refreshBuilderScorecards = async () => {
-    const res = await getBuilderScorecards(1);
+    const bId = currentUser?.role === 'BUILDER' ? currentUser.id : 1;
+    const res = await getBuilderScorecards(bId);
     if (res.success && Array.isArray(res.data)) {
       setBuilderScorecards(res.data);
       if (res.data.length > 0) {
@@ -188,14 +305,14 @@ export function AppProvider({ children }) {
 
   // Recruiter Shortlist action
   const toggleShortlist = async (candidateId, jobId = 1) => {
+    const recruiterId = currentUser?.role === 'RECRUITER' ? currentUser.id : 5;
     const exists = shortlistedCandidateIds.includes(candidateId);
     if (!exists) {
       setShortlistedCandidateIds(prev => [...prev, candidateId]);
-      // Call backend POST /api/shortlist
       await apiShortlistCandidate({
         job_id: jobId,
         builder_id: candidateId,
-        recruiter_id: 5
+        recruiter_id: recruiterId
       });
     } else {
       setShortlistedCandidateIds(prev => prev.filter(id => id !== candidateId));
@@ -218,13 +335,14 @@ export function AppProvider({ children }) {
 
   // Recruiter Add Job action
   const addJob = async (newJobData) => {
+    const recruiterId = currentUser?.role === 'RECRUITER' ? currentUser.id : 5;
     const payload = {
       company: newJobData.company || "TechNova Solutions",
       title: newJobData.title || "Backend Developer",
       description: newJobData.description || "Engineering role",
       required_skills: newJobData.skills && newJobData.skills.length > 0 ? newJobData.skills : ["Java", "SQL", "REST API"],
       difficulty: newJobData.difficulty || "Intermediate",
-      created_by: 5
+      created_by: recruiterId
     };
 
     const res = await apiCreateJob(payload);
@@ -233,7 +351,6 @@ export function AppProvider({ children }) {
       return res.data;
     }
 
-    // Local fallback
     const localJob = {
       id: `job-${Date.now()}`,
       ...payload,
@@ -246,9 +363,10 @@ export function AppProvider({ children }) {
 
   // Reviewer Submit Review action
   const submitReview = async (submissionId, reviewResult) => {
+    const reviewerId = currentUser?.role === 'REVIEWER' ? currentUser.id : 4;
     const payload = {
       submission_id: Number(submissionId),
-      reviewer_id: 4, // Ananya Rao
+      reviewer_id: reviewerId,
       correctness: reviewResult.rubrics?.correctness || 4.5,
       architecture: reviewResult.rubrics?.architecture || 4.2,
       code_quality: reviewResult.rubrics?.codeQuality || 4.0,
@@ -265,7 +383,6 @@ export function AppProvider({ children }) {
       return res.data;
     }
 
-    // Local fallback
     const existing = reviewQueue.find(r => r.id === submissionId || r.submission_id === submissionId);
     const completed = {
       ...existing,
@@ -281,14 +398,21 @@ export function AppProvider({ children }) {
     return completed;
   };
 
+  const activeRole = currentUser?.role?.toLowerCase() || null;
+
   return (
     <AppContext.Provider
       value={{
         // Backend health status
         backendAvailable,
-        // Active role
+        // Auth session
+        currentUser,
+        setCurrentUser,
+        authLoading,
+        login,
+        logout,
+        quickDemoLogin,
         activeRole,
-        setActiveRole,
         // Active flow IDs
         activeAssessmentId,
         setActiveAssessmentId,
@@ -298,14 +422,23 @@ export function AppProvider({ children }) {
         setActiveReviewId,
         activeScorecardId,
         setActiveScorecardId,
+        // Resume Flow
+        uploadedResume,
+        setUploadedResume,
+        submitResume,
         // Builder
-        builderUser,
-        builderProfile: builderUser ? {
+        builderUser: (currentUser?.role === 'BUILDER' ? currentUser : builderUser),
+        builderProfile: (currentUser?.role === 'BUILDER' ? {
+          ...mockBuilderProfile,
+          name: currentUser.name,
+          role: currentUser.domain || 'Backend Engineering',
+          skills: currentUser.skills || mockBuilderProfile.skills
+        } : (builderUser ? {
           ...mockBuilderProfile,
           name: builderUser.name,
           role: builderUser.domain,
           skills: builderUser.skills || mockBuilderProfile.skills
-        } : mockBuilderProfile,
+        } : mockBuilderProfile)),
         scorecardData: mockScorecardData,
         builderScorecards,
         challenges: challenges.length > 0 ? challenges : mockChallenges,
@@ -314,28 +447,34 @@ export function AppProvider({ children }) {
         setBuilderSubmission,
         refreshBuilderScorecards,
         // Reviewer
-        reviewerUser,
+        reviewerUser: (currentUser?.role === 'REVIEWER' ? currentUser : reviewerUser),
         reviewerProfile: {
           ...mockReviewerProfile,
-          name: reviewerUser ? reviewerUser.name : mockReviewerProfile.name,
+          name: currentUser?.role === 'REVIEWER' ? currentUser.name : (reviewerUser ? reviewerUser.name : mockReviewerProfile.name),
+          domain: currentUser?.role === 'REVIEWER' ? (currentUser.domain || 'Backend Engineering') : (reviewerUser ? reviewerUser.domain : mockReviewerProfile.domain),
+          skills: currentUser?.role === 'REVIEWER' && currentUser.skills ? currentUser.skills : (reviewerUser?.skills || mockReviewerProfile.skills),
           credibilityScore: reviewerCredibility,
-          pendingReviewsCount: reviewQueue.length
+          reviewsCount: completedReviews.length + 18
         },
         reviewQueue,
         completedReviews,
         submitReview,
         refreshQueue,
         // Recruiter
-        recruiterUser,
-        companyData: mockRecruiterData,
-        jobs: jobs.length > 0 ? jobs : mockRecruiterData.roles,
-        addJob,
-        refreshJobs,
-        candidates: candidates.length > 0 ? candidates : mockRecruiterData.candidates,
+        recruiterUser: (currentUser?.role === 'RECRUITER' ? currentUser : recruiterUser),
+        recruiterProfile: {
+          ...mockRecruiterData.profile,
+          name: currentUser?.role === 'RECRUITER' ? currentUser.name : (recruiterUser ? recruiterUser.name : mockRecruiterData.profile.name)
+        },
+        jobs,
+        candidates,
         refreshCandidates,
+        refreshJobs,
+        shortlistedCandidateIds,
         toggleShortlist,
         isShortlisted,
-        shortlistCount: (mockRecruiterData.shortlistedCount || 14) + shortlistedCandidateIds.length
+        shortlistCount: shortlistedCandidateIds.length,
+        addJob
       }}
     >
       {children}
@@ -346,7 +485,7 @@ export function AppProvider({ children }) {
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error("useApp must be used within an AppProvider");
+    throw new Error('useApp must be used within an AppProvider');
   }
   return context;
 }

@@ -1,10 +1,13 @@
-// src/pages/reviewer/ReviewerDashboard.jsx
+// client/src/pages/reviewer/ReviewerDashboard.jsx
 import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 
 export default function ReviewerDashboard() {
-  const { reviewerProfile, reviewQueue, completedReviews, refreshQueue } = useApp();
+  const location = useLocation();
+  const { reviewerProfile, reviewQueue, completedReviews, refreshQueue, currentUser } = useApp();
+
+  const isUnauthorized = new URLSearchParams(location.search).get('unauthorized') === 'true';
 
   useEffect(() => {
     if (refreshQueue) {
@@ -14,6 +17,20 @@ export default function ReviewerDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+      
+      {/* Role Mismatch Redirection Notice */}
+      {isUnauthorized && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="font-semibold">Role Restricted Portal:</span>
+            <span>You attempted to access a Builder or Recruiter route. SignalCraft strictly enforces persona isolation.</span>
+          </div>
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-200">
+            Reviewer Mode Active
+          </span>
+        </div>
+      )}
       
       {/* Reviewer Header Card */}
       <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">

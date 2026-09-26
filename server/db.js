@@ -191,9 +191,26 @@ export function initDB() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (challenge_id) REFERENCES challenges(id)
     );
+
+    CREATE TABLE IF NOT EXISTS resumes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      builder_id INTEGER NOT NULL,
+      filename TEXT,
+      raw_text TEXT,
+      extracted_skills TEXT NOT NULL,
+      confidence_scores TEXT,
+      experience_years REAL DEFAULT 2.5,
+      domain TEXT DEFAULT 'Backend Engineering',
+      matched_challenge_id INTEGER DEFAULT 1,
+      assessment_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (builder_id) REFERENCES users(id)
+    );
   `);
 
   // Run safe schema migrations for existing databases
+  try { db.exec("ALTER TABLE users ADD COLUMN password TEXT DEFAULT 'password123';"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN resume_data TEXT;"); } catch {}
   try { db.exec("ALTER TABLE reviews ADD COLUMN comments TEXT;"); } catch {}
   try { db.exec("ALTER TABLE reviews ADD COLUMN strengths TEXT;"); } catch {}
   try { db.exec("ALTER TABLE reviews ADD COLUMN weaknesses TEXT;"); } catch {}
@@ -390,12 +407,12 @@ export function ensureDemoData() {
       db.prepare(`
         INSERT INTO scorecards (
           id, builder_id, assessment_id, review_id, domain, overall_score,
-          verified_skills, status, issued_at, valid_until, verification_hash
-        ) VALUES ('SC-BE-2026-001', 1, ?, ?, 'Backend Engineering', 88, ?, 'VALID', ?, ?, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+          skill_scores, review_score, issued_at, valid_until, status
+        ) VALUES ('SC-BE-2026-001', 1, ?, ?, 'Backend Engineering', 88, ?, 90, ?, ?, 'VALID')
       `).run(
         rahulAssessment.id,
         rahulReview.id,
-        JSON.stringify(['Java', 'SQL', 'REST API', 'Debugging']),
+        JSON.stringify({ 'Java': 86, 'SQL': 82, 'REST API': 91, 'Debugging': 88, 'Problem Solving': 89 }),
         formatDate(now),
         addTwoYears(now)
       );

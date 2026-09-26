@@ -183,11 +183,11 @@ router.post('/upload', (req, res) => {
       const assessmentId = insertAss.lastInsertRowid;
       assessment = { id: assessmentId, challenge_id: matchedChallenge.id, builder_id: builderIdNum, status: 'IN_PROGRESS' };
 
-      // Seed tailored questions for this assessment
-      seedQuestionsForAssessment(assessmentId, matchedChallenge.id);
+      // Seed tailored questions for this assessment based on extracted resume skills
+      seedQuestionsForAssessment(assessmentId, matchedChallenge.id, extraction.skills);
     } else {
-      // Ensure questions exist
-      seedQuestionsForAssessment(assessment.id, matchedChallenge.id);
+      // Ensure questions exist tailored to skills
+      seedQuestionsForAssessment(assessment.id, matchedChallenge.id, extraction.skills);
     }
 
     // 4. Save resume entry

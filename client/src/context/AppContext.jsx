@@ -11,6 +11,7 @@ import {
   getCandidates,
   shortlistCandidate as apiShortlistCandidate,
   getBuilderScorecards,
+  registerUser,
   loginUser,
   getAuthMe,
   logoutUser,
@@ -75,20 +76,7 @@ export function AppProvider({ children }) {
   const [builderScorecards, setBuilderScorecards] = useState([]);
   const [challenges, setChallenges] = useState([]);
   const [uploadedResume, setUploadedResume] = useState(null);
-  const [builderSubmission, setBuilderSubmission] = useState({
-    repoUrl: "https://github.com/rahul-sharma/signalcraft-order-service",
-    demoUrl: "https://order-service-demo.signalcraft.dev",
-    explanation: "Engineered a Spring Boot Order Service with pessimistic write-locks on inventory reservation and idempotent request hash tables.",
-    adr: {
-      what: "Order Management REST API with deterministic lifecycle and atomic stock reservation.",
-      why: "Pessimistic DB row-level reservation guarantees zero stock oversell under high concurrency.",
-      alternatives: "Evaluated optimistic retries; rejected due to retry avalanche under flash traffic.",
-      tradeoffs: "Accepted higher lock duration for guaranteed ACID transactional integrity.",
-      scaling: "Scale horizontally with PostgreSQL read replicas and Kafka outbox event streaming."
-    },
-    statusStep: 4,
-    submitted: true
-  });
+  const [builderSubmission, setBuilderSubmission] = useState(null);
 
   // Verify backend availability and hydrate initial state
   useEffect(() => {
@@ -186,19 +174,20 @@ export function AppProvider({ children }) {
         setCandidates(mockRecruiterData.candidates);
       }
 
-      // 8. Load Builder Scorecards
-      const scRes = await getBuilderScorecards(1);
-      if (scRes.success && Array.isArray(scRes.data)) {
-        setBuilderScorecards(scRes.data);
-        if (scRes.data.length > 0) {
-          setActiveScorecardId(scRes.data[0].id);
+      // 8. Load Builder Scorecards for current user if builder
+      if (currentUser?.role === 'BUILDER') {
+        const scRes = await getBuilderScorecards(currentUser.id);
+        if (scRes.success && Array.isArray(scRes.data)) {
+          setBuilderScorecards(scRes.data);
+          if (scRes.data.length > 0) {
+            setActiveScorecardId(scRes.data[0].id);
+          }
         }
-      }
-
-      // 9. Load latest resume for builder 1
-      const resResume = await getBuilderResume(1);
-      if (resResume.success && resResume.data) {
-        setUploadedResume(resResume.data);
+        // 9. Load latest resume for current builder
+        const resResume = await getBuilderResume(currentUser.id);
+        if (resResume.success && resResume.data) {
+          setUploadedResume(resResume.data);
+        }
       }
     } catch (e) {
       console.warn("Failed to load initial data from backend, using fallback:", e);
@@ -206,6 +195,10 @@ export function AppProvider({ children }) {
   }
 
   // Authentication Handlers
+  const register = async (userData) => {
+    return await registerUser(userData);
+  };
+
   const login = async (email, password, role) => {
     const res = await loginUser({ email, password, role });
     if (res.success && res.data?.user) {
@@ -409,6 +402,7 @@ export function AppProvider({ children }) {
         currentUser,
         setCurrentUser,
         authLoading,
+        register,
         login,
         logout,
         quickDemoLogin,
@@ -429,16 +423,18 @@ export function AppProvider({ children }) {
         // Builder
         builderUser: (currentUser?.role === 'BUILDER' ? currentUser : builderUser),
         builderProfile: (currentUser?.role === 'BUILDER' ? {
-          ...mockBuilderProfile,
+          id: currentUser.id,
           name: currentUser.name,
-          role: currentUser.domain || 'Backend Engineering',
-          skills: currentUser.skills || mockBuilderProfile.skills
+          email: currentUser.email,
+          role: currentUser.domain || 'Engineering Builder',
+          skills: currentUser.skills || []
         } : (builderUser ? {
-          ...mockBuilderProfile,
+          id: builderUser.id,
           name: builderUser.name,
-          role: builderUser.domain,
-          skills: builderUser.skills || mockBuilderProfile.skills
-        } : mockBuilderProfile)),
+          email: builderUser.email,
+          role: builderUser.domain || 'Engineering Builder',
+          skills: builderUser.skills || []
+        } : null)),
         scorecardData: mockScorecardData,
         builderScorecards,
         challenges: challenges.length > 0 ? challenges : mockChallenges,

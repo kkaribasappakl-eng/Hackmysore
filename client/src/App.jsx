@@ -11,6 +11,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 // Top Pages
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import RoleSelection from './pages/RoleSelection';
 
 // Builder Pages
@@ -56,6 +57,7 @@ function MainLayout() {
           {/* Public Authentication & Landing */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/role-selection" element={<RoleSelection />} />
 
           {/* Protected Builder Flow */}

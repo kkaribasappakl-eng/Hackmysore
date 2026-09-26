@@ -1,14 +1,15 @@
-// src/pages/builder/Assessment.jsx
+// client/src/pages/builder/Assessment.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { getAssessment, getAssessmentQuestions, submitAssessmentAnswers, evaluateAssessment } from '../../services/api';
+import { getAssessment, getAssessmentQuestions, submitAssessmentAnswers, evaluateAssessment, getBuilderResume, getBuilderDashboardData } from '../../services/api';
 
 export default function Assessment() {
   const navigate = useNavigate();
-  const { activeAssessmentId, assessmentData } = useApp();
+  const { activeAssessmentId, setActiveAssessmentId, currentUser } = useApp();
 
-  const assessmentId = activeAssessmentId || 1;
+  const [assessmentId, setAssessmentId] = useState(activeAssessmentId);
+  const [needsResume, setNeedsResume] = useState(false);
 
   // Data states
   const [assessmentInfo, setAssessmentInfo] = useState(null);
@@ -33,10 +34,38 @@ export default function Assessment() {
     async function loadData() {
       setLoading(true);
       setError(null);
+      setNeedsResume(false);
 
       try {
+        let currentAssId = activeAssessmentId;
+
+        // If no activeAssessmentId in context, find real assessment for this builder
+        if (!currentAssId && currentUser?.id) {
+          const dashRes = await getBuilderDashboardData(currentUser.id);
+          if (dashRes.success && dashRes.data?.assessment?.id) {
+            currentAssId = dashRes.data.assessment.id;
+            setActiveAssessmentId(currentAssId);
+          } else {
+            const resResume = await getBuilderResume(currentUser.id);
+            if (resResume.success && resResume.data?.assessment_id) {
+              currentAssId = resResume.data.assessment_id;
+              setActiveAssessmentId(currentAssId);
+            }
+          }
+        }
+
+        if (!currentAssId) {
+          if (isMounted) {
+            setNeedsResume(true);
+            setLoading(false);
+          }
+          return;
+        }
+
+        setAssessmentId(currentAssId);
+
         // 1. Fetch assessment metadata
-        const metaRes = await getAssessment(assessmentId);
+        const metaRes = await getAssessment(currentAssId);
         if (metaRes.success && metaRes.data && isMounted) {
           setAssessmentInfo(metaRes.data);
           if (metaRes.data.status === 'COMPLETED' && metaRes.data.score !== null) {
@@ -47,8 +76,8 @@ export default function Assessment() {
           }
         }
 
-        // 2. Fetch questions dynamically from backend (correct_answer is stripped)
-        const qRes = await getAssessmentQuestions(assessmentId);
+        // 2. Fetch questions dynamically from backend (tailored to resume skills!)
+        const qRes = await getAssessmentQuestions(currentAssId);
         if (qRes.success && Array.isArray(qRes.data) && qRes.data.length > 0 && isMounted) {
           setQuestions(qRes.data);
 
@@ -59,7 +88,6 @@ export default function Assessment() {
           });
           setAnswers(initAnswers);
         } else if (isMounted) {
-          // Fallback to sample questions structure if API returned empty
           setError('No questions returned for this assessment.');
         }
       } catch (err) {
@@ -76,7 +104,7 @@ export default function Assessment() {
     return () => {
       isMounted = false;
     };
-  }, [assessmentId]);
+  }, [activeAssessmentId, currentUser?.id]);
 
   // Submit Answers and Evaluate
   const handleSubmitAnswers = async () => {
@@ -150,6 +178,34 @@ export default function Assessment() {
       [qId]: value
     }));
   };
+
+  // Needs Resume State
+  if (needsResume) {
+    return (
+      <div className="max-w-xl mx-auto my-16 p-8 rounded-2xl bg-slate-900/80 border border-slate-800 text-center space-y-5 animate-fadeIn">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-2xl font-bold border border-blue-500/20">
+          📄
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-white">Resume Required for Assessment Tasks</h2>
+          <p className="text-sm text-slate-300 leading-relaxed max-w-md mx-auto">
+            SignalCraft personalizes your practical challenge and assessment tasks based directly on your declared resume skills. Please upload your resume first.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            to="/builder/resume"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-sm transition-all shadow-lg shadow-blue-600/25"
+          >
+            <span>Upload Resume to Calibrate Tasks</span>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Loading State
   if (loading) {

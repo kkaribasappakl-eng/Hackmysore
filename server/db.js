@@ -598,13 +598,18 @@ export function formatDate(dateInput) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Seed questions for an assessment based on challenge
-export function seedQuestionsForAssessment(assessmentId, challengeId = 1) {
+// Seed questions for an assessment dynamically based on matched challenge & resume skills
+export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills = []) {
   try {
     const existing = db.prepare('SELECT COUNT(*) as count FROM assessment_questions WHERE assessment_id = ?').get(assessmentId);
     if (existing && existing.count > 0) {
       return; // Already seeded for this assessment
     }
+
+    const challenge = db.prepare('SELECT * FROM challenges WHERE id = ?').get(challengeId);
+    const domain = challenge?.domain || 'Backend Engineering';
+    const isFrontend = domain.toLowerCase().includes('frontend') || skills.some(s => ['react', 'javascript', 'frontend', 'vue', 'next.js', 'css'].includes(String(s).toLowerCase()));
+    const isDebugging = challengeId === 2 || challenge?.title?.toLowerCase().includes('debugging') || skills.some(s => ['debugging', 'concurrency', 'performance'].includes(String(s).toLowerCase()));
 
     const insertQ = db.prepare(`
       INSERT INTO assessment_questions (
@@ -612,70 +617,196 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    // 1. Coding Question (Java)
-    insertQ.run(
-      assessmentId,
-      'CODING',
-      'Implement an API endpoint in Java/Spring Boot that creates a new order. It must validate order items, calculate the total amount, verify inventory availability, and return a 201 Created status with the newly created Order response body.',
-      null,
-      '@PostMapping("/api/orders") public ResponseEntity<Order> createOrder(@Valid @RequestBody OrderRequest req) { Order created = orderService.createOrder(req); return ResponseEntity.status(HttpStatus.CREATED).body(created); }',
-      25,
-      'Java',
-      'Intermediate'
-    );
+    if (isFrontend) {
+      // 1. Coding Task (React / UI Components)
+      insertQ.run(
+        assessmentId,
+        'CODING',
+        'Implement an interactive analytics metric card component in React. It must accept a live `feedData` prop, compute average throughput using `useMemo`, display a loading spinner when data is empty, handle an error boundary, and provide a refresh button triggering an `onRefresh` callback.',
+        null,
+        'export function MetricCard({ feedData, loading, onRefresh }) { const avg = useMemo(() => feedData?.length ? (feedData.reduce((a, b) => a + b.value, 0) / feedData.length).toFixed(1) : 0, [feedData]); if (loading) return <Spinner />; return <div className="metric-card"><h3>Average Throughput: {avg} req/s</h3><button onClick={onRefresh}>Refresh</button></div>; }',
+        25,
+        'React',
+        'Intermediate'
+      );
 
-    // 2. Debugging Question (Debugging)
-    insertQ.run(
-      assessmentId,
-      'DEBUGGING',
-      'Identify the issue in this backend concurrent order service snippet and explain how you would fix it. Two simultaneous requests for the last available inventory item both succeed, resulting in negative inventory:\n\n```java\n@Transactional\npublic OrderResult placeOrder(Long productId, int quantity) {\n    Product product = productRepository.findById(productId).orElseThrow();\n    if (product.getStock() >= quantity) {\n        product.setStock(product.getStock() - quantity);\n        productRepository.save(product);\n        return OrderResult.success();\n    }\n    return OrderResult.outOfStock();\n}\n```',
-      null,
-      'Race condition / lost update caused by non-atomic check-then-act. Fix by using SELECT ... FOR UPDATE (pessimistic write locking) or atomic database decrement: UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?.',
-      25,
-      'Debugging',
-      'Advanced'
-    );
+      // 2. Debugging Task (React State & Re-render Loop)
+      insertQ.run(
+        assessmentId,
+        'DEBUGGING',
+        'Identify the memory leak and infinite re-render loop in this React dashboard hook snippet and explain how you would resolve it:\n\n```jsx\nfunction useLiveFeed(socketUrl) {\n  const [events, setEvents] = useState([]);\n  useEffect(() => {\n    const ws = new WebSocket(socketUrl);\n    ws.onmessage = (msg) => setEvents([...events, JSON.parse(msg.data)]);\n  }, [events]);\n  return events;\n}\n```',
+        null,
+        'Two major bugs: 1) Dependency array includes `events`, causing the WebSocket connection to disconnect and reconnect on every single incoming message. 2) No cleanup function closing `ws.close()`. Fix by using functional state updater `setEvents(prev => [...prev, JSON.parse(msg.data)])` and changing the dependency array to `[socketUrl]`, plus returning a cleanup `return () => ws.close();`.',
+        25,
+        'Debugging',
+        'Advanced'
+      );
 
-    // 3. SQL Question (SQL)
-    insertQ.run(
-      assessmentId,
-      'SQL',
-      'Write a SQL query to find the top 5 customers by total order value for completed orders in the last 30 days. Return customer_name, total_orders count, and total_spent, ordered descending by total_spent.',
-      null,
-      'SELECT c.name as customer_name, COUNT(o.id) as total_orders, SUM(o.total_amount) as total_spent FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = "COMPLETED" GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 5;',
-      20,
-      'SQL',
-      'Intermediate'
-    );
+      // 3. State Management / Data Task (JavaScript / REST API)
+      insertQ.run(
+        assessmentId,
+        'SQL',
+        'Write a JavaScript data transformation function that takes an array of raw telemetry events `[{ id, timestamp, status, latencyMs, endpoint }]` and returns an object summarizing: total requests, error rate percentage (status >= 400), and top 3 slowest endpoints by p95 latency.',
+        null,
+        'function aggregateTelemetry(events) { const total = events.length; const errors = events.filter(e => e.status >= 400).length; const errorRate = total ? (errors / total) * 100 : 0; const byEndpoint = {}; events.forEach(e => { (byEndpoint[e.endpoint] = byEndpoint[e.endpoint] || []).push(e.latencyMs); }); const slowest = Object.entries(byEndpoint).map(([ep, latencies]) => ({ endpoint: ep, p95: latencies.sort((a,b)=>a-b)[Math.floor(latencies.length * 0.95)] || 0 })).sort((a,b)=>b.p95 - a.p95).slice(0, 3); return { total, errorRate, slowest }; }',
+        20,
+        'JavaScript',
+        'Intermediate'
+      );
 
-    // 4. Reasoning Question (Problem Solving)
-    insertQ.run(
-      assessmentId,
-      'REASONING',
-      'Why did you choose REST for this system? What trade-offs did you consider between synchronous REST APIs and asynchronous message queuing (e.g. Kafka/RabbitMQ) for checkout initiation vs inventory reservation and billing fulfillment?',
-      null,
-      'Synchronous REST provides immediate feedback and predictable ACID consistency for order creation, but couples client latency. Asynchronous message queuing (e.g. Kafka outbox) decouples downstream fulfillment and prevents catastrophic backpressure, but introduces eventual consistency and requires idempotent retry handlers.',
-      15,
-      'Problem Solving',
-      'Intermediate'
-    );
+      // 4. Architecture Reasoning Task (State & Rendering Trade-offs)
+      insertQ.run(
+        assessmentId,
+        'REASONING',
+        'When building a high-frequency real-time dashboard receiving 50 events/second, explain your architectural trade-offs between local React state, context API, and an external store (e.g. Zustand or Redux). How do you prevent excessive re-renders and frame drops?',
+        null,
+        'React Context triggers full-tree re-renders for all consumer components on every update, causing serious frame drops under 50 events/sec. An external store with selector subscriptions (like Zustand) allows individual widgets to subscribe only to their specific slice of state. Additionally, batching updates with requestAnimationFrame or throttling state commits to 60fps preserves smooth 60Hz UI rendering without CPU saturation.',
+        15,
+        'Problem Solving',
+        'Intermediate'
+      );
 
-    // 5. MCQ Question (REST API)
-    insertQ.run(
-      assessmentId,
-      'MCQ',
-      'Which HTTP header and status code combination should be implemented on the order creation endpoint to guarantee idempotency and prevent duplicate billing upon network retries?',
-      JSON.stringify([
+      // 5. MCQ Task (React Performance Optimization)
+      insertQ.run(
+        assessmentId,
+        'MCQ',
+        'Which React optimization technique is most appropriate to prevent a complex SVG chart component from re-rendering when unrelated sibling state updates in the parent dashboard?',
+        JSON.stringify([
+          'Wrap the chart component with React.memo() and pass memoized props via useMemo/useCallback',
+          'Call forceUpdate() inside the chart render cycle',
+          'Use document.getElementById() to directly mutate DOM nodes',
+          'Move the chart into a synchronous while loop'
+        ]),
+        'Wrap the chart component with React.memo() and pass memoized props via useMemo/useCallback',
+        15,
+        'React',
+        'Intermediate'
+      );
+
+    } else if (isDebugging) {
+      // High-volume Debugging & Performance Tasks
+      insertQ.run(
+        assessmentId,
+        'CODING',
+        'Implement an in-memory Rate Limiter token-bucket class in Java or TypeScript that enforces 100 requests per minute per IP address, with thread-safe atomic token replenishment and non-blocking rejection.',
+        null,
+        'class TokenBucketRateLimiter { private final long capacity; private final AtomicLong tokens; private final AtomicLong lastRefill; public TokenBucketRateLimiter(long capacity) { this.capacity = capacity; this.tokens = new AtomicLong(capacity); this.lastRefill = new AtomicLong(System.currentTimeMillis()); } public boolean allowRequest() { refill(); return tokens.getAndUpdate(t -> t > 0 ? t - 1 : 0) > 0; } }',
+        25,
+        'Performance',
+        'Advanced'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'DEBUGGING',
+        'Diagnose the latency spike in this database connection pool configuration where threads enter TIMED_WAITING under 5,000 concurrent requests:\n\n```properties\nhikari.maximumPoolSize=10\nhikari.connectionTimeout=30000\nhikari.leakDetectionThreshold=2000\n```\nExplain root cause and optimal configuration adjustments.',
+        null,
+        'Connection starvation caused by pool size of 10 being heavily undersized for 5000 concurrent requests with long transactions. Threads queue up and time out after 30 seconds. Solution: Increase Hikari pool size based on CPU cores * 2 + effective spindle count (e.g. 30-50), reduce transaction hold times, and add read-replicas.',
+        25,
+        'Debugging',
+        'Advanced'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'SQL',
+        'Write an EXPLAIN ANALYZE-optimized SQL query that scans 10 million transactions to retrieve hourly throughput and 99th percentile execution time, utilizing composite indexes on `(tenant_id, created_at)`.',
+        null,
+        'SELECT strftime("%Y-%m-%d %H:00:00", created_at) as hour, COUNT(*) as tx_count, AVG(execution_time_ms) as avg_time FROM transactions WHERE tenant_id = ? AND created_at >= datetime("now", "-24 hours") GROUP BY hour ORDER BY hour ASC;',
+        20,
+        'SQL',
+        'Advanced'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'REASONING',
+        'What are the trade-offs between distributed tracing (e.g. OpenTelemetry with Jaeger) and log aggregation (e.g. ELK) when identifying p99 tail latency spikes across microservices?',
+        null,
+        'Distributed tracing provides causal request context across network hops with span timings, isolating the specific bottleneck service. Log aggregation provides verbose localized details but lacks unified request DAG visualization and suffers high storage costs under heavy traffic.',
+        15,
+        'Problem Solving',
+        'Advanced'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'MCQ',
+        'Which pattern prevents cascading failures when a downstream payment microservice experiences severe latency or downtime?',
+        JSON.stringify([
+          'Circuit Breaker pattern with graceful fallback or degraded response',
+          'Synchronous busy-waiting while loop with no timeout',
+          'Increasing connection timeout from 30s to 10 minutes',
+          'Sending 10 parallel duplicate requests for redundancy'
+        ]),
+        'Circuit Breaker pattern with graceful fallback or degraded response',
+        15,
+        'Debugging',
+        'Intermediate'
+      );
+
+    } else {
+      // Standard Backend Engineering Tasks (Java, Spring Boot, SQL, REST API)
+      insertQ.run(
+        assessmentId,
+        'CODING',
+        'Implement an API endpoint in Java/Spring Boot that creates a new order. It must validate order items, calculate the total amount, verify inventory availability, and return a 201 Created status with the newly created Order response body.',
+        null,
+        '@PostMapping("/api/orders") public ResponseEntity<Order> createOrder(@Valid @RequestBody OrderRequest req) { Order created = orderService.createOrder(req); return ResponseEntity.status(HttpStatus.CREATED).body(created); }',
+        25,
+        'Java',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'DEBUGGING',
+        'Identify the issue in this backend concurrent order service snippet and explain how you would fix it. Two simultaneous requests for the last available inventory item both succeed, resulting in negative inventory:\n\n```java\n@Transactional\npublic OrderResult placeOrder(Long productId, int quantity) {\n    Product product = productRepository.findById(productId).orElseThrow();\n    if (product.getStock() >= quantity) {\n        product.setStock(product.getStock() - quantity);\n        productRepository.save(product);\n        return OrderResult.success();\n    }\n    return OrderResult.outOfStock();\n}\n```',
+        null,
+        'Race condition / lost update caused by non-atomic check-then-act. Fix by using SELECT ... FOR UPDATE (pessimistic write locking) or atomic database decrement: UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?.',
+        25,
+        'Debugging',
+        'Advanced'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'SQL',
+        'Write a SQL query to find the top 5 customers by total order value for completed orders in the last 30 days. Return customer_name, total_orders count, and total_spent, ordered descending by total_spent.',
+        null,
+        'SELECT c.name as customer_name, COUNT(o.id) as total_orders, SUM(o.total_amount) as total_spent FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = "COMPLETED" GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 5;',
+        20,
+        'SQL',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'REASONING',
+        'Why did you choose REST for this system? What trade-offs did you consider between synchronous REST APIs and asynchronous message queuing (e.g. Kafka/RabbitMQ) for checkout initiation vs inventory reservation and billing fulfillment?',
+        null,
+        'Synchronous REST provides immediate feedback and predictable ACID consistency for order creation, but couples client latency. Asynchronous message queuing (e.g. Kafka outbox) decouples downstream fulfillment and prevents catastrophic backpressure, but introduces eventual consistency and requires idempotent retry handlers.',
+        15,
+        'Problem Solving',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'MCQ',
+        'Which HTTP header and status code combination should be implemented on the order creation endpoint to guarantee idempotency and prevent duplicate billing upon network retries?',
+        JSON.stringify([
+          'Idempotency-Key header returning 200 OK with cached original response payload',
+          'ETag header returning 412 Precondition Failed on replay',
+          'Authorization header returning 401 Unauthorized',
+          'Cache-Control header returning 304 Not Modified'
+        ]),
         'Idempotency-Key header returning 200 OK with cached original response payload',
-        'ETag header returning 412 Precondition Failed on replay',
-        'Authorization header returning 401 Unauthorized',
-        'Cache-Control header returning 304 Not Modified'
-      ]),
-      'Idempotency-Key header returning 200 OK with cached original response payload',
-      15,
-      'REST API',
-      'Intermediate'
-    );
+        15,
+        'REST API',
+        'Intermediate'
+      );
+    }
   } catch (err) {
     console.error(`Failed to seed questions for assessment ${assessmentId}:`, err);
   }

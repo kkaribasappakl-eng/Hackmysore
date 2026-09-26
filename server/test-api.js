@@ -957,6 +957,116 @@ async function runTests() {
       recordTest('Builder Resume & Assessment Match Retrieval', false, e.message);
     }
 
+    // TEST 50: Manual Account Registration (Database Persistence)
+    const testRegEmail = `candidate_${Date.now()}@testcraft.example`;
+    const testRegPassword = 'customSecurePassword123';
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Nayana Sharma',
+          email: testRegEmail,
+          password: testRegPassword,
+          role: 'BUILDER',
+          domain: 'Backend Engineering'
+        })
+      });
+      const body = await res.json();
+      if (res.status === 201 && body.success === true && body.data?.user?.email === testRegEmail && body.data?.user?.role === 'BUILDER') {
+        recordTest('Manual User Registration & Database Saving', true);
+      } else {
+        recordTest('Manual User Registration & Database Saving', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Manual User Registration & Database Saving', false, e.message);
+    }
+
+    // TEST 51: Manual Login with Newly Registered Credentials
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: testRegEmail,
+          password: testRegPassword
+        })
+      });
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && body.data?.user?.role === 'BUILDER' && body.data?.token) {
+        recordTest('Manual Login & Role-Based Token Issuance', true);
+      } else {
+        recordTest('Manual Login & Role-Based Token Issuance', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Manual Login & Role-Based Token Issuance', false, e.message);
+    }
+
+    // TEST 52: Duplicate Registration Rejection (409 Conflict)
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Duplicate Candidate',
+          email: testRegEmail,
+          password: 'anotherPassword123',
+          role: 'BUILDER'
+        })
+      });
+      if (res.status === 409) {
+        recordTest('Duplicate Email Registration Rejection (409)', true);
+      } else {
+        recordTest('Duplicate Email Registration Rejection (409)', false, `Expected 409 got ${res.status}`);
+      }
+    } catch (e) {
+      recordTest('Duplicate Email Registration Rejection (409)', false, e.message);
+    }
+
+    // TEST 53: Real Builder Dashboard Data for Newly Registered User
+    try {
+      const res = await fetch(`${BASE_URL}/api/users/${newUserId}/builder-dashboard`);
+      const body = await res.json();
+      if (
+        res.status === 200 &&
+        body.success === true &&
+        body.data.user.name === 'Nayana NewBuilder' &&
+        body.data.profile_completion.percentage === 25 &&
+        body.data.ranking.rank === null &&
+        body.data.scorecard === null &&
+        Array.isArray(body.data.stages) &&
+        body.data.stages.length === 6 &&
+        body.data.stages[0].state === 'PENDING'
+      ) {
+        recordTest('Real Builder Dashboard State for New Registered User', true);
+      } else {
+        recordTest('Real Builder Dashboard State for New Registered User', false, `Invalid state: ${JSON.stringify(body.data)}`);
+      }
+    } catch (e) {
+      recordTest('Real Builder Dashboard State for New Registered User', false, e.message);
+    }
+
+    // TEST 54: Real Builder Dashboard Data for Verified User (ID 1)
+    try {
+      const res = await fetch(`${BASE_URL}/api/users/1/builder-dashboard`);
+      const body = await res.json();
+      if (
+        res.status === 200 &&
+        body.success === true &&
+        body.data.user.id === 1 &&
+        body.data.profile_completion.percentage === 100 &&
+        body.data.scorecard !== null &&
+        body.data.scorecard.id === 'SC-BE-2026-001' &&
+        body.data.ranking.rank !== null
+      ) {
+        recordTest('Real Builder Dashboard State for Verified User', true);
+      } else {
+        recordTest('Real Builder Dashboard State for Verified User', false, `Invalid state: ${JSON.stringify(body.data)}`);
+      }
+    } catch (e) {
+      recordTest('Real Builder Dashboard State for Verified User', false, e.message);
+    }
+
   } finally {
     if (serverInstance) {
       serverInstance.close();

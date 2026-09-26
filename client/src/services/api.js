@@ -98,6 +98,13 @@ async function request(endpoint, options = {}) {
 }
 
 // 0. Authentication & Role Session
+export async function registerUser(userData) {
+  return request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(userData)
+  });
+}
+
 export async function loginUser(credentials) {
   const res = await request('/auth/login', {
     method: 'POST',
@@ -154,6 +161,10 @@ export async function getUsers() {
 
 export async function getUser(id) {
   return request(`/users/${id}`);
+}
+
+export async function getBuilderDashboardData(id) {
+  return request(`/users/${id}/builder-dashboard`);
 }
 
 export async function getUsersByRole(role) {

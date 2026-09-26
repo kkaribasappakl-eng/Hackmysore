@@ -25,10 +25,11 @@ export default function ResumeUpload() {
           setSamples(samplesRes.data);
         }
 
-        const bId = currentUser?.id || 1;
-        const res = await getBuilderResume(bId);
-        if (res.success && res.data) {
-          setExistingResume(res.data);
+        if (currentUser?.id) {
+          const res = await getBuilderResume(currentUser.id);
+          if (res.success && res.data) {
+            setExistingResume(res.data);
+          }
         }
       } catch (e) {
         console.warn('Could not load samples:', e);
@@ -68,7 +69,7 @@ export default function ResumeUpload() {
 
     try {
       const res = await submitResume({
-        builder_id: currentUser?.id || 1,
+        builder_id: currentUser?.id,
         filename: filename || 'my_resume.pdf',
         resume_text: resumeText
       });
@@ -310,7 +311,7 @@ export default function ResumeUpload() {
               Existing Resume on File
             </div>
             <div className="text-sm font-bold text-white mt-0.5">
-              {existingResume.filename || 'Rahul_Sharma_Resume.pdf'} • {existingResume.domain}
+              {existingResume.filename || 'resume.pdf'} • {existingResume.domain || 'Engineering'}
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {existingResume.extracted_skills?.slice(0, 6).map((skill) => (

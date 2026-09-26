@@ -6,6 +6,103 @@ import { generateToken, verifyToken } from '../middleware/auth.js';
 const router = express.Router();
 
 /**
+ * POST /api/auth/register
+ * Body: { name, email, password, role, domain, skills }
+ */
+router.post('/register', (req, res) => {
+  try {
+    const { name, email, password, role, domain, skills } = req.body;
+
+    // Validation
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name is required (minimum 2 characters)'
+      });
+    }
+
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid email address is required'
+      });
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required (minimum 6 characters)'
+      });
+    }
+
+    const normalizedRole = (role || '').toUpperCase();
+    if (!['BUILDER', 'REVIEWER', 'RECRUITER'].includes(normalizedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role must be one of: BUILDER, REVIEWER, RECRUITER'
+      });
+    }
+
+    // Check if user already exists
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1').get(cleanEmail);
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with this email address already exists. Please log in.'
+      });
+    }
+
+    // Default domain & skills based on registered role
+    let defaultDomain = domain || (normalizedRole === 'BUILDER' ? 'Engineering' : normalizedRole === 'REVIEWER' ? 'System Architecture' : 'Technical Recruiting');
+    let defaultSkills = skills && skills.length > 0 ? skills : [];
+
+    const now = new Date().toISOString();
+
+    const insertResult = db.prepare(`
+      INSERT INTO users (name, email, password, role, domain, skills, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      name.trim(),
+      cleanEmail,
+      password,
+      normalizedRole,
+      defaultDomain,
+      JSON.stringify(defaultSkills),
+      now
+    );
+
+    const newUser = {
+      id: insertResult.lastInsertRowid,
+      name: name.trim(),
+      email: cleanEmail,
+      role: normalizedRole,
+      domain: defaultDomain,
+      skills: defaultSkills
+    };
+
+    // Also issue auth token immediately so user can auto-session if desired
+    const token = generateToken(newUser);
+
+    return res.status(201).json({
+      success: true,
+      message: `Account created successfully as ${normalizedRole}!`,
+      data: {
+        token,
+        user: newUser
+      }
+    });
+  } catch (err) {
+    console.error('[Auth Register Error]:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to register account'
+    });
+  }
+});
+
+/**
  * POST /api/auth/login
  * Body: { email, password, role }
  */
@@ -20,30 +117,38 @@ router.post('/login', (req, res) => {
       });
     }
 
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required'
+      });
+    }
+
     // Lookup user by email (case-insensitive)
-    const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1').get(email.trim());
+    const cleanEmail = email.trim().toLowerCase();
+    const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ? LIMIT 1').get(cleanEmail);
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'No account found with this email address'
+        message: 'Invalid email or password'
       });
     }
 
-    // Validate password (default for seeded demo accounts is 'password123')
+    // Validate password
     const validPassword = user.password || 'password123';
-    if (password && password !== validPassword) {
+    if (password !== validPassword) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials. For demo accounts use password123'
+        message: 'Invalid email or password'
       });
     }
 
-    // Role check if specific role login tab was used
+    // If specific role requested, ensure account matches
     if (role && role.toUpperCase() !== user.role.toUpperCase()) {
       return res.status(403).json({
         success: false,
-        message: `Account is registered as ${user.role}. You cannot log in through the ${role.toUpperCase()} portal.`
+        message: `This account is registered as ${user.role}. You cannot log in through the ${role.toUpperCase()} portal.`
       });
     }
 
@@ -69,7 +174,7 @@ router.post('/login', (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Authenticated successfully as ${user.role}`,
+      message: `Signed in successfully as ${user.role}`,
       data: {
         token,
         user: userData
@@ -133,7 +238,6 @@ router.post('/logout', (req, res) => {
 
 /**
  * GET /api/auth/demo-users
- * Quick helper for judging and 1-click evaluation
  */
 router.get('/demo-users', (req, res) => {
   try {

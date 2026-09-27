@@ -188,7 +188,8 @@ router.get('/:id/builder-dashboard', (req, res) => {
       completionPct += 25;
       completionMessage = 'Resume analyzed. Solve your practical assessment to advance.';
     }
-    if (assessment && assessment.status === 'COMPLETED') {
+    const hasCompletedAssessment = assessment?.status === 'COMPLETED' || db.prepare("SELECT id FROM assessments WHERE builder_id = ? AND status = 'COMPLETED' LIMIT 1").get(builderId);
+    if (hasCompletedAssessment || latestScorecard) {
       completionPct += 25;
       completionMessage = 'Assessment passed. Submit code & ADR for reviewer verification.';
     }

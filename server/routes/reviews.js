@@ -20,16 +20,17 @@ router.get('/queue', (req, res) => {
           reviewerSkills = [];
         }
       }
-    } else {
-      // Default to standard reviewer skills (Ananya Rao: Java, Backend, SQL)
-      reviewerSkills = ['java', 'backend', 'sql', 'system design', 'rest api'];
+    }
+    if (reviewerSkills.length === 0) {
+      // Default to broad reviewer expertise so newly registered reviewers are not locked out
+      reviewerSkills = ['java', 'backend', 'sql', 'system design', 'rest api', 'engineering', 'react', 'javascript', 'python', 'docker'];
     }
 
     // Query pending submissions
     let query = `
       SELECT * FROM submissions
       WHERE status IN ('SUBMITTED', 'PENDING_REVIEW', 'UNDER_REVIEW', 'IN_REVIEW', 'FLAGGED')
-      ORDER BY id ASC
+      ORDER BY id DESC
     `;
 
     if (status && status.toUpperCase() === 'ALL') {
@@ -58,7 +59,7 @@ router.get('/queue', (req, res) => {
       const matchedSkills = challengeSkills.filter(cs =>
         reviewerSkills.some(rs => rs.includes(cs.toLowerCase()) || cs.toLowerCase().includes(rs))
       );
-      const isExpertiseMatched = matchedSkills.length > 0;
+      const isExpertiseMatched = reviewerSkills.length === 0 || matchedSkills.length > 0;
 
       const candidateName = builder ? builder.name : 'Unknown Candidate';
 
@@ -74,8 +75,8 @@ router.get('/queue', (req, res) => {
         domain: challenge?.domain || builder?.domain || 'Backend Engineering',
         difficulty: challenge?.difficulty || 'Intermediate',
         skills: challengeSkills,
-        assessment_score: assessment?.score !== undefined && assessment?.score !== null ? assessment.score : 85,
-        assessmentScore: assessment?.score !== undefined && assessment?.score !== null ? assessment.score : 85,
+        assessment_score: assessment?.score !== undefined && assessment?.score !== null ? assessment.score : 0,
+        assessmentScore: assessment?.score !== undefined && assessment?.score !== null ? assessment.score : 0,
         integrity_status: s.integrity_status || 'PASSED',
         integrityStatus: s.integrity_status || 'PASSED',
         similarity_score: s.similarity_score,
@@ -148,11 +149,11 @@ router.get('/queue', (req, res) => {
       formatted = formatted.filter(item => item.is_expertise_matched);
     }
 
-    // Prioritize expertise-matched submissions in the queue
+    // Prioritize expertise-matched submissions in the queue, with newest submissions first
     formatted.sort((a, b) => {
       if (a.is_expertise_matched && !b.is_expertise_matched) return -1;
       if (!a.is_expertise_matched && b.is_expertise_matched) return 1;
-      return a.submission_id - b.submission_id;
+      return b.submission_id - a.submission_id;
     });
 
     return res.status(200).json({

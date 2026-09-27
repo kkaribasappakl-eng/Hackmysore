@@ -5,7 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { getReviewQueue } from '../../services/api';
 
 export default function ReviewQueue() {
-  const { reviewQueue: contextQueue, completedReviews } = useApp();
+  const { reviewQueue: contextQueue, completedReviews, currentUser } = useApp();
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,9 +15,9 @@ export default function ReviewQueue() {
     setLoading(true);
     setError(null);
     try {
-      // Reviewer ID 4 is Ananya Rao (Java, Backend, SQL)
+      const reviewerId = currentUser?.id || 4;
       const res = await getReviewQueue({
-        reviewer_id: 4,
+        reviewer_id: reviewerId,
         matched_only: filterMatched ? true : undefined
       });
 
@@ -136,12 +136,12 @@ export default function ReviewQueue() {
         ) : (
           queue.map((raw) => {
             const id = raw.submission_id || raw.id;
-            const candidateName = raw.candidate?.name || raw.candidateName || raw.builder_name || 'Rahul Sharma';
-            const candidateAvatar = raw.candidateAvatar || (candidateName ? candidateName.split(' ').map(n=>n[0]).join('') : 'RS');
+            const candidateName = raw.candidateName || raw.builder_name || raw.builderName || raw.candidate?.name || 'Engineering Candidate';
+            const candidateAvatar = raw.candidateAvatar || (candidateName ? candidateName.split(' ').map(n=>n[0]).join('') : 'C');
             const challengeTitle = raw.challenge?.title || raw.challengeTitle || 'Backend Order Management API';
             const integrityStatus = raw.integrity_status || raw.integrityStatus || 'PASSED';
             const aiPreScore = raw.ai_analysis?.advisory_score || raw.ai_analysis?.reasoning_quality || raw.aiPreScore || 84;
-            const assessmentScore = raw.assessment_score || raw.assessmentScore || 85;
+            const assessmentScore = raw.assessment_score !== undefined && raw.assessment_score !== null ? raw.assessment_score : (raw.assessmentScore ?? 0);
             const submittedAt = raw.submitted_at ? new Date(raw.submitted_at).toLocaleDateString() : (raw.submittedAt || 'Today');
             const skills = raw.skills || raw.challenge?.skills || raw.candidate?.skills || ['Java', 'SQL', 'REST API'];
             const status = raw.status || raw.review_status || 'SUBMITTED';
@@ -195,6 +195,35 @@ export default function ReviewQueue() {
                       <span>✓</span> {integrityStatus}
                     </span>
                   </div>
+
+                  {(raw.repository_url || raw.project_url) && (
+                    <div className="flex flex-wrap items-center gap-3 pl-0 sm:pl-14 pt-1">
+                      {raw.repository_url && (
+                        <a
+                          href={raw.repository_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-mono text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 bg-cyan-950/40 px-2.5 py-1 rounded-md border border-cyan-800/40"
+                        >
+                          <span>📦 Candidate Repo</span>
+                          <span>↗</span>
+                        </a>
+                      )}
+                      {raw.project_url && (
+                        <a
+                          href={raw.project_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-mono text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1 bg-emerald-950/40 px-2.5 py-1 rounded-md border border-emerald-800/40"
+                        >
+                          <span>🚀 Live Demo</span>
+                          <span>↗</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Right: AI Pre-score & Action CTA */}

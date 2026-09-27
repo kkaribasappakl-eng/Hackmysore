@@ -215,6 +215,10 @@ export async function getAssessment(id) {
   return request(`/assessments/${id}`);
 }
 
+export async function getAssessmentByBuilder(builderId) {
+  return request(`/assessments/builder/${builderId}`);
+}
+
 export async function getAssessmentQuestions(assessmentId) {
   return request(`/assessments/${assessmentId}/questions`);
 }
@@ -238,6 +242,12 @@ export async function completeAssessment(id) {
   });
 }
 
+export async function resetAssessment(assessmentId) {
+  return request(`/assessments/${assessmentId}/reset`, {
+    method: 'POST'
+  });
+}
+
 // 7. Submissions
 export async function createSubmission(submissionData) {
   return request('/submissions', {
@@ -248,6 +258,10 @@ export async function createSubmission(submissionData) {
 
 export async function getSubmission(id) {
   return request(`/submissions/${id}`);
+}
+
+export async function getSubmissionByBuilder(builderId) {
+  return request(`/submissions/builder/${builderId}`);
 }
 
 export async function getSubmissionsByStatus(status) {
@@ -318,10 +332,34 @@ export async function getCandidates(filters = {}) {
   if (filters.sort) {
     queryParams.append('sort', filters.sort);
   }
+  if (filters.jobId) {
+    queryParams.append('jobId', filters.jobId);
+  }
+  if (filters.proofCoverageMin !== undefined && filters.proofCoverageMin !== null && filters.proofCoverageMin !== '') {
+    queryParams.append('proofCoverageMin', filters.proofCoverageMin);
+  }
+  if (filters.verificationStatus && filters.verificationStatus !== 'All') {
+    queryParams.append('verificationStatus', filters.verificationStatus);
+  }
+  if (filters.requiredSkill && filters.requiredSkill !== 'All') {
+    queryParams.append('requiredSkill', filters.requiredSkill);
+  }
 
   const queryString = queryParams.toString();
   const endpoint = queryString ? `/candidates?${queryString}` : '/candidates';
   return request(endpoint);
+}
+
+export async function getCandidate(id, jobId = null) {
+  const qs = jobId ? `?jobId=${jobId}` : '';
+  return request(`/candidates/${id}${qs}`);
+}
+
+export async function getCandidateJobFit(candidateId, jobId = null) {
+  if (jobId) {
+    return request(`/candidates/${candidateId}/job-fit/${jobId}`);
+  }
+  return request(`/candidates/${candidateId}/job-fit`);
 }
 
 export async function getRankings(filters = {}) {

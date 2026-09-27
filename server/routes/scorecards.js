@@ -20,7 +20,7 @@ function formatScorecard(sc) {
     builder_name: builder ? builder.name : 'Unknown',
     domain: sc.domain,
     overall_score: sc.overall_score,
-    assessment_score: assessment?.score || 85,
+    assessment_score: assessment?.score ?? 0,
     review_score: sc.review_score,
     skill_scores: sc.skill_scores ? JSON.parse(sc.skill_scores) : {},
     issued_at: sc.issued_at,
@@ -105,19 +105,13 @@ router.post('/generate', (req, res) => {
 
     const issued_at = formatDate(now);
     const valid_until = addTwoYears(issued_at);
-    const assessment_score = assessment.score || 85;
+    const assessment_score = assessment.score !== undefined && assessment.score !== null ? assessment.score : 0;
     const review_score = Math.round((review.overall_score / 5) * 100);
     // Composite verified score combines assessment performance (40%) and authoritative reviewer score (60%)
     const composite_score = Math.round(assessment_score * 0.4 + review_score * 0.6);
-    const overall_score = composite_score >= 80 ? composite_score : assessment_score;
+    const overall_score = composite_score;
 
-    const skill_scores = assessment.skill_scores || JSON.stringify({
-      'Java': 86,
-      'SQL': 82,
-      'REST API': 91,
-      'Debugging': 88,
-      'Problem Solving': 89
-    });
+    const skill_scores = assessment.skill_scores || JSON.stringify({});
 
     const insertStmt = db.prepare(`
       INSERT INTO scorecards (

@@ -108,4 +108,41 @@ router.get('/job/:jobId', (req, res) => {
   }
 });
 
+// GET /api/shortlist - Return all shortlisted candidates
+router.get('/', (req, res) => {
+  try {
+    const items = db.prepare(`
+      SELECT s.id as shortlist_id, s.job_id, s.status, s.created_at,
+             u.id as builder_id, u.name as builder_name, u.email as builder_email, u.domain, u.skills,
+             j.title as job_title, j.company as job_company
+      FROM shortlist s
+      INNER JOIN users u ON s.builder_id = u.id
+      LEFT JOIN jobs j ON s.job_id = j.id
+    `).all();
+
+    const formatted = items.map(item => ({
+      shortlist_id: item.shortlist_id,
+      job_id: item.job_id,
+      job_title: item.job_title,
+      job_company: item.job_company,
+      status: item.status,
+      created_at: item.created_at,
+      builder: {
+        id: item.builder_id,
+        name: item.builder_name,
+        email: item.builder_email,
+        domain: item.domain,
+        skills: item.skills ? JSON.parse(item.skills) : []
+      }
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formatted
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve shortlisted candidates' });
+  }
+});
+
 export default router;

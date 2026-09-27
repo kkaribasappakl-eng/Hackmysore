@@ -1,8 +1,8 @@
-// src/pages/builder/Assessment.jsx
+// client/src/pages/builder/Assessment.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { getAssessment, getAssessmentQuestions, submitAssessmentAnswers, evaluateAssessment, getBuilderResume, getBuilderDashboardData } from '../../services/api';
+import { getAssessment, getAssessmentQuestions, submitAssessmentAnswers, evaluateAssessment, resetAssessment, getBuilderResume, getBuilderDashboardData } from '../../services/api';
 
 export default function Assessment() {
   const navigate = useNavigate();
@@ -67,12 +67,23 @@ export default function Assessment() {
         // 1. Fetch assessment metadata
         const metaRes = await getAssessment(currentAssId);
         if (metaRes.success && metaRes.data && isMounted) {
+          // Candidate Isolation: Ensure assessment belongs to the logged-in builder
+          if (currentUser?.id && metaRes.data.builder_id && Number(metaRes.data.builder_id) !== Number(currentUser.id)) {
+            console.warn('Assessment builder_id mismatch. Resetting to candidate session.');
+            setNeedsResume(true);
+            setLoading(false);
+            return;
+          }
+
           setAssessmentInfo(metaRes.data);
           if (metaRes.data.status === 'COMPLETED' && metaRes.data.score !== null) {
             setEvaluatedResult({
               overall_score: metaRes.data.score,
               skill_scores: metaRes.data.skill_scores || {}
             });
+          } else {
+            // Explicitly clear any stale evaluated result if assessment is IN_PROGRESS
+            setEvaluatedResult(null);
           }
         }
 
@@ -108,6 +119,15 @@ export default function Assessment() {
 
   // Submit Answers and Evaluate
   const handleSubmitAnswers = async () => {
+    // Check answer completeness
+    const answeredCount = questions.filter((q) => (answers[q.id] || '').trim().length > 0).length;
+    if (answeredCount === 0) {
+      const confirmZero = window.confirm(
+        'Warning: You have not entered answers to any of the questions. Submitting now will evaluate your score as 0 / 100.\n\nAre you sure you want to submit with 0 answers?'
+      );
+      if (!confirmZero) return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -115,7 +135,7 @@ export default function Assessment() {
       // 1. Format answers array for POST /api/assessments/:id/answers
       const answerPayload = questions.map((q) => ({
         question_id: q.id,
-        answer: (answers[q.id] || '').trim() || 'No answer provided'
+        answer: (answers[q.id] || '').trim()
       }));
 
       // Submit answers to backend
@@ -135,6 +155,29 @@ export default function Assessment() {
       setError(err.message || 'An error occurred during submission. Please retry.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Retake Assessment: resets answers and backend status so candidate can solve questions
+  const handleRetakeAssessment = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      await resetAssessment(assessmentId);
+      setEvaluatedResult(null);
+
+      // Reset answers
+      const initAnswers = {};
+      questions.forEach((q) => {
+        initAnswers[q.id] = '';
+      });
+      setAnswers(initAnswers);
+      setCurrentIndex(0);
+      setTimeLeft(45 * 60);
+    } catch (err) {
+      setError('Failed to reset assessment. Please retry.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -220,27 +263,29 @@ export default function Assessment() {
 
   // RESULT VIEW (Requirement 10)
   if (evaluatedResult) {
-    const overallScore = evaluatedResult.overall_score !== undefined ? evaluatedResult.overall_score : 85;
-    const skillScores = evaluatedResult.skill_scores || {
-      'Java': 86,
-      'SQL': 82,
-      'REST API': 91,
-      'Debugging': 88,
-      'Problem Solving': 89
-    };
+    const overallScore = evaluatedResult.overall_score !== undefined && evaluatedResult.overall_score !== null ? evaluatedResult.overall_score : 0;
+    const skillScores = evaluatedResult.skill_scores || {};
+    const passedThreshold = overallScore >= 70;
 
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8 animate-fadeIn">
         {/* Top Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-semibold">
-            <span>✓</span> Assessment Completed
+          <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-mono font-semibold ${
+            passedThreshold
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          }`}>
+            <span>{passedThreshold ? '✓' : '⚠'}</span>
+            <span>{passedThreshold ? 'Assessment Completed — Threshold Met' : 'Assessment Completed — Threshold Not Met'}</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white">
             Assessment Results
           </h1>
           <p className="text-sm text-slate-400">
-            Assessment successfully completed. Your performance has been verified and recorded.
+            {passedThreshold
+              ? 'Assessment successfully completed. Your performance has been verified and recorded.'
+              : 'Evaluated based on your submitted answers. Baseline passing threshold requires a minimum of 70/100.'}
           </p>
         </div>
 
@@ -248,14 +293,21 @@ export default function Assessment() {
         <div className="p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-8">
           
           {/* Overall Score Banner */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-6 rounded-xl bg-gradient-to-r from-blue-900/30 via-slate-900 to-indigo-900/30 border border-blue-500/30">
+          <div className={`flex flex-col sm:flex-row items-center justify-between gap-6 p-6 rounded-xl border ${
+            passedThreshold
+              ? 'bg-gradient-to-r from-blue-900/30 via-slate-900 to-indigo-900/30 border-blue-500/30'
+              : 'bg-gradient-to-r from-rose-950/40 via-slate-900 to-amber-950/30 border-rose-500/30'
+          }`}>
             <div>
               <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Overall Verified Score</span>
               <div className="text-4xl sm:text-5xl font-black text-white font-mono mt-1">
                 {overallScore} <span className="text-lg text-slate-400 font-normal">/ 100</span>
               </div>
-              <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1.5 font-medium">
-                <span>✓</span> Baseline technical threshold passed
+              <p className={`text-xs mt-2 flex items-center gap-1.5 font-medium ${
+                passedThreshold ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                <span>{passedThreshold ? '✓' : '⚠'}</span>
+                <span>{passedThreshold ? 'Baseline technical threshold passed (Minimum 70 required)' : 'Did not meet baseline technical threshold (Minimum 70 required)'}</span>
               </p>
             </div>
 
@@ -273,48 +325,74 @@ export default function Assessment() {
               <span className="text-xs text-slate-400 font-normal">Demonstrated Competency</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {Object.entries(skillScores).map(([skill, score]) => (
-                <div
-                  key={skill}
-                  className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-4"
-                >
-                  <div className="space-y-1">
-                    <span className="text-xs font-bold text-slate-200 block">{skill}</span>
-                    <div className="w-32 bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, Math.max(10, score))}%` }}
-                      />
+            {Object.keys(skillScores).length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {Object.entries(skillScores).map(([skill, score]) => (
+                  <div
+                    key={skill}
+                    className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-200 block">{skill}</span>
+                      <div className="w-32 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full transition-all duration-500 ${score >= 70 ? 'bg-emerald-500' : score > 0 ? 'bg-amber-500' : 'bg-slate-700'}`}
+                          style={{ width: `${Math.max(5, score)}%` }}
+                        />
+                      </div>
                     </div>
+                    <span className={`text-base font-extrabold font-mono ${score >= 70 ? 'text-emerald-400' : score > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                      {score} <span className="text-xs text-slate-500 font-normal">/ 100</span>
+                    </span>
                   </div>
-                  <span className="text-base font-extrabold font-mono text-blue-400">
-                    {score} <span className="text-xs text-slate-500 font-normal">/ 100</span>
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-slate-950/50 border border-slate-800 text-xs text-slate-400">
+                No skill metrics recorded. Provide valid technical solutions to calibrate competency scores.
+              </div>
+            )}
           </div>
 
-          {/* Next Steps Notification */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-1">
-            <p className="font-semibold text-white">Next Step: Architecture Decision Record (ADR)</p>
+          {/* Guidance Notification */}
+          <div className={`p-4 rounded-xl border text-xs space-y-1 ${
+            passedThreshold
+              ? 'bg-slate-950 border-slate-800 text-slate-300'
+              : 'bg-rose-950/20 border-rose-900/40 text-rose-200'
+          }`}>
+            <p className="font-semibold text-white">
+              {passedThreshold ? 'Next Step: Architecture Decision Record (ADR)' : 'Action Required: Valid Solutions Required'}
+            </p>
             <p className="text-slate-400 leading-relaxed">
-              To complete your technical verification trail, provide your code repository URL and document your architectural decisions (what you built, trade-offs, and scalability choices).
+              {passedThreshold
+                ? 'To complete your technical verification trail, provide your code repository URL and document your architectural decisions (what you built, trade-offs, and scalability choices).'
+                : 'Questions submitted blank or without valid technical code receive 0 marks. Click below to retake the assessment tasks and submit genuine solutions.'}
             </p>
           </div>
 
-          {/* Action Button */}
-          <div className="pt-2 flex justify-end">
+          {/* Action Buttons */}
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
             <button
-              onClick={() => navigate('/builder/submission')}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold uppercase tracking-wider shadow-lg shadow-blue-600/25 transition-all flex items-center gap-2"
+              onClick={handleRetakeAssessment}
+              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
             >
-              <span>Continue to Submission</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
+              <span>Retake Assessment Tasks</span>
             </button>
+
+            {passedThreshold && (
+              <button
+                onClick={() => navigate('/builder/submission')}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold uppercase tracking-wider shadow-lg shadow-blue-600/25 transition-all flex items-center gap-2"
+              >
+                <span>Continue to Submission</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </button>
+            )}
           </div>
 
         </div>

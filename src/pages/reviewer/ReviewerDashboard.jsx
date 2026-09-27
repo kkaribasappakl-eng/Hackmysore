@@ -1,19 +1,33 @@
-// src/pages/reviewer/ReviewerDashboard.jsx
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { getReviewQueue } from '../../services/api';
 
 export default function ReviewerDashboard() {
   const location = useLocation();
   const { reviewerProfile, reviewQueue, completedReviews, refreshQueue, currentUser } = useApp();
+  const [liveQueue, setLiveQueue] = useState([]);
 
   const isUnauthorized = new URLSearchParams(location.search).get('unauthorized') === 'true';
 
   useEffect(() => {
-    if (refreshQueue) {
-      refreshQueue();
-    }
+    const fetchQueue = async () => {
+      try {
+        const res = await getReviewQueue();
+        if (res.success && Array.isArray(res.data)) {
+          setLiveQueue(res.data);
+        }
+        if (refreshQueue) {
+          refreshQueue();
+        }
+      } catch (err) {
+        console.warn("Could not load queue in ReviewerDashboard:", err);
+      }
+    };
+    fetchQueue();
   }, []);
+
+  const queueToDisplay = liveQueue.length > 0 ? liveQueue : reviewQueue;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -68,7 +82,7 @@ export default function ReviewerDashboard() {
           >
             <span>Open Review Queue</span>
             <span className="w-5 h-5 rounded-full bg-purple-900/60 text-white text-xs flex items-center justify-center font-mono">
-              {reviewQueue.length}
+              {queueToDisplay.length}
             </span>
           </Link>
         </div>
@@ -81,10 +95,10 @@ export default function ReviewerDashboard() {
         <div className="p-6 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-slate-700 transition-all">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
             <span>Review Queue</span>
-            <span className="font-mono text-purple-400 font-semibold">{reviewQueue.length} Submissions</span>
+            <span className="font-mono text-purple-400 font-semibold">{queueToDisplay.length} Submissions</span>
           </div>
           <div className="text-3xl font-extrabold text-white font-mono">
-            {reviewQueue.length}
+            {queueToDisplay.length}
             <span className="text-sm text-slate-500 font-normal"> Pending</span>
           </div>
           <p className="text-xs text-slate-400 mt-3">
@@ -137,15 +151,15 @@ export default function ReviewerDashboard() {
             to="/reviewer/queue"
             className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
           >
-            View All ({reviewQueue.length}) →
+            View All ({queueToDisplay.length}) →
           </Link>
         </div>
 
         <div className="divide-y divide-slate-800">
-          {reviewQueue.slice(0, 3).map((raw) => {
+          {queueToDisplay.slice(0, 10).map((raw) => {
             const id = raw.submission_id || raw.id;
-            const candidateName = raw.candidate?.name || raw.candidateName || 'Rahul Sharma';
-            const candidateAvatar = raw.candidateAvatar || (candidateName ? candidateName.split(' ').map(n=>n[0]).join('') : 'RS');
+            const candidateName = raw.candidateName || raw.builder_name || raw.builderName || raw.candidate?.name || 'Engineering Candidate';
+            const candidateAvatar = raw.candidateAvatar || (candidateName ? candidateName.split(' ').map(n=>n[0]).join('') : 'C');
             const challengeTitle = raw.challenge?.title || raw.challengeTitle || 'Engineering Challenge';
             const integrityStatus = raw.integrity_status || raw.integrityStatus || 'Passed';
             const aiPreScore = raw.ai_analysis?.reasoning_quality || raw.aiPreScore || 84;

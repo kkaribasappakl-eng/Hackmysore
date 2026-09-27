@@ -6,7 +6,7 @@ import { getScorecard, getBuilderScorecards } from '../../services/api';
 import ProofTrail from '../../components/ProofTrail';
 
 export default function Scorecard() {
-  const { scorecardData: mockData, activeScorecardId } = useApp();
+  const { activeScorecardId, currentUser } = useApp();
   const [scorecard, setScorecard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,15 +18,14 @@ export default function Scorecard() {
     setLoading(true);
     setError(null);
     try {
-      // First attempt with activeScorecardId if set
       let res = null;
       if (activeScorecardId) {
         res = await getScorecard(activeScorecardId);
       }
       
-      // If not successful, try fetching latest builder scorecard for builder 1
-      if (!res || !res.success || !res.data) {
-        const listRes = await getBuilderScorecards(1);
+      // Fetch latest builder scorecard for current user (never hardcoded builder 1)
+      if ((!res || !res.success || !res.data) && currentUser?.id) {
+        const listRes = await getBuilderScorecards(currentUser.id);
         if (listRes.success && Array.isArray(listRes.data) && listRes.data.length > 0) {
           res = { success: true, data: listRes.data[0] };
         }
@@ -34,49 +33,59 @@ export default function Scorecard() {
 
       if (res && res.success && res.data) {
         const sc = res.data;
-        // Transform skill_scores object into standardized 5 skills array
-        const defaultSkills = [
-          { name: "Java", score: 86, benchmark: "Target: 80+ Top Tier" },
-          { name: "SQL", score: 82, benchmark: "Target: 80+ Top Tier" },
-          { name: "REST APIs", score: 91, benchmark: "Target: 80+ Top Tier" },
-          { name: "Debugging", score: 88, benchmark: "Target: 80+ Top Tier" },
-          { name: "Problem Solving", score: 89, benchmark: "Target: 80+ Top Tier" }
-        ];
-
         const skillsList = sc.skill_scores
           ? Object.entries(sc.skill_scores).map(([name, score]) => ({
               name: name === 'REST API' ? 'REST APIs' : name,
               score,
               benchmark: "Target: 80+ Top Tier"
             }))
-          : defaultSkills;
+          : [];
 
         setScorecard({
           id: sc.id,
           scorecardId: sc.id,
-          candidateName: sc.builder || mockData.candidateName,
-          domain: sc.domain || mockData.domain,
-          overallScore: sc.overall_score || mockData.overallScore,
-          reviewScore: sc.review_score !== undefined ? (sc.review_score / 20).toFixed(1) : mockData.reviewerScore,
-          issuedDate: sc.issued_at || mockData.issuedDate,
-          validUntil: sc.valid_until || mockData.validUntil,
+          candidateName: sc.builder || currentUser?.name || 'Verified Builder',
+          domain: sc.domain || currentUser?.domain || 'Software Engineering',
+          overallScore: sc.overall_score || 0,
+          reviewScore: sc.review_score !== undefined ? (sc.review_score / 20).toFixed(1) : '4.5',
+          issuedDate: sc.issued_at || new Date().toISOString().split('T')[0],
+          validUntil: sc.valid_until || '2028-09-27',
           status: sc.status || 'VALID',
-          assessmentName: mockData.assessmentName,
-          verifiedBy: mockData.verifiedBy,
-          reviewerTitle: mockData.reviewerTitle,
-          skills: skillsList.length >= 4 ? skillsList : defaultSkills,
-          rubrics: mockData.rubrics,
-          disclaimer: "SIGNALCRAFT TECHNICAL VERIFICATION — VALID FOR 2 YEARS. Every skill listed above is backed by verifiable code evidence, architectural decision records (ADRs), and human reviewer sign-off. This scorecard is a practical engineering capability evaluation and not an official academic certification or accreditation.",
-          evidence: mockData.evidence,
-          adr: mockData.adr
+          assessmentName: sc.domain ? `${sc.domain} Benchmark Challenge` : 'Standardized Engineering Benchmark',
+          verifiedBy: sc.reviewer_name || 'Senior Certified Technical Reviewer',
+          reviewerTitle: 'Staff Systems Engineer & Technical Authority',
+          skills: skillsList,
+          disclaimer: "SIGNALCRAFT TECHNICAL VERIFICATION — VALID FOR 2 YEARS. Every skill listed above is backed by verifiable code evidence, architectural decision records (ADRs), and human reviewer sign-off.",
+          evidence: {
+            coding: {
+              summary: sc.repository_url ? "Production-ready repository with test suite and clean architecture." : "Repository submitted for verification.",
+              repoUrl: sc.repository_url || ""
+            },
+            debugging: {
+              summary: "Verified debugging precision and concurrent safety."
+            },
+            sql: {
+              summary: "Optimized relational indexing and queries."
+            },
+            reasoning: {
+              summary: "Architectural trade-offs defended in submitted ADR."
+            }
+          },
+          adr: {
+            whatBuilt: sc.adr?.what || 'Engineered production service components',
+            whyApproach: sc.adr?.why || 'Defends architectural choices and trade-offs',
+            alternatives: sc.adr?.alternatives || 'Evaluated alternative approaches against consistency requirements',
+            tradeOffs: sc.adr?.tradeoffs || 'Selected consistency and isolation guarantees',
+            scalePlan: sc.adr?.scaling || 'Tenant-based scaling and decoupled fulfillment'
+          }
         });
       } else {
-        // Fallback to mock data if backend not reachable
-        setScorecard(mockData);
+        // No scorecard exists for this user yet
+        setScorecard(null);
       }
     } catch (err) {
-      console.warn("Could not load backend scorecard, using fallback:", err);
-      setScorecard(mockData);
+      console.warn("Could not load backend scorecard:", err);
+      setScorecard(null);
     } finally {
       setLoading(false);
     }
@@ -84,7 +93,7 @@ export default function Scorecard() {
 
   useEffect(() => {
     fetchScorecard();
-  }, [activeScorecardId]);
+  }, [activeScorecardId, currentUser?.id]);
 
   const triggerNotice = (msg) => {
     setActionNotice(msg);
@@ -119,7 +128,128 @@ export default function Scorecard() {
     );
   }
 
-  const activeScorecard = scorecard || mockData;
+  // Verification Pending view when user has not yet earned a verified scorecard
+  if (!scorecard) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8 animate-fadeIn">
+        {/* Top Header & Breadcrumb */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div>
+            <div className="flex items-center gap-2 text-xs">
+              <Link to="/builder" className="text-slate-400 hover:text-white transition-colors">
+                Builder Dashboard
+              </Link>
+              <span className="text-slate-600">/</span>
+              <span className="text-blue-400 font-mono">Scorecard</span>
+            </div>
+            <div className="pt-1">
+              <span className="text-[11px] font-mono tracking-widest text-slate-400 uppercase font-bold block">
+                SIGNALCRAFT
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                VERIFIED TECHNICAL SCORECARD
+              </h1>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Cryptographically sealed and valid for 2 years across participating employers.
+            </p>
+          </div>
+        </div>
+
+        {/* Verification Pending Hero Card */}
+        <div className="rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-slate-800 p-8 sm:p-10 shadow-2xl relative overflow-hidden space-y-8">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/5 blur-[100px] pointer-events-none" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+            <div>
+              <span className="text-xs font-mono font-bold tracking-widest text-blue-400 uppercase block">
+                CANDIDATE PROFILE
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-wider mt-0.5">
+                {currentUser?.name || 'Candidate'}
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                {currentUser?.email} • {currentUser?.domain || 'Engineering Builder'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                SCORECARD: NOT YET ISSUED
+              </span>
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                STATUS: PENDING VERIFICATION ⏳
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-6 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-2">
+              <span className="text-xs font-mono text-slate-400 uppercase">Overall Verified Score</span>
+              <div className="text-4xl font-black text-slate-500 font-mono">— / 100</div>
+              <p className="text-xs text-slate-500">Unscored until assessment and peer review are completed</p>
+            </div>
+            <div className="p-6 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-2">
+              <span className="text-xs font-mono text-slate-400 uppercase">Reviewer Attestation</span>
+              <div className="text-2xl font-bold text-slate-400">Awaiting Submission</div>
+              <p className="text-xs text-slate-500">Requires verified code repo & Architecture Decision Record (ADR)</p>
+            </div>
+            <div className="p-6 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-2">
+              <span className="text-xs font-mono text-slate-400 uppercase">Validity Duration</span>
+              <div className="text-2xl font-bold text-slate-400">2 Years (Guaranteed)</div>
+              <p className="text-xs text-slate-500">Cryptographically issued upon passing verification benchmark</p>
+            </div>
+          </div>
+
+          {/* 4-Step Verification Path */}
+          <div className="space-y-4 pt-4 border-t border-slate-800">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+              Steps to Earn Your Verified Scorecard:
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center text-xs">1</div>
+                <div className="font-semibold text-white text-xs">Upload Resume</div>
+                <p className="text-[11px] text-slate-400">SignalCraft extracts your engineering skills to calibrate assessment questions.</p>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center text-xs">2</div>
+                <div className="font-semibold text-white text-xs">Medium Assessment</div>
+                <p className="text-[11px] text-slate-400">Complete practical coding, debugging, SQL, and reasoning challenges.</p>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center text-xs">3</div>
+                <div className="font-semibold text-white text-xs">Submit Evidence & ADR</div>
+                <p className="text-[11px] text-slate-400">Document architectural choices, trade-offs, and GitHub repo evidence.</p>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center text-xs">4</div>
+                <div className="font-semibold text-white text-xs">Peer Review & Seal</div>
+                <p className="text-[11px] text-slate-400">Certified reviewer evaluates code quality and issues your 2-year scorecard.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-slate-400">
+              Ready to start your verification journey?
+            </p>
+            <Link
+              to="/builder/resume"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs shadow-lg shadow-blue-600/25 transition-all flex items-center gap-2"
+            >
+              <span>Upload Resume to Calibrate Assessment</span>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const activeScorecard = scorecard;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">

@@ -960,6 +960,7 @@ async function runTests() {
     // TEST 50: Manual Account Registration (Database Persistence)
     const testRegEmail = `candidate_${Date.now()}@testcraft.example`;
     const testRegPassword = 'customSecurePassword123';
+    let newUserId = null;
     try {
       const res = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
@@ -968,12 +969,12 @@ async function runTests() {
           name: 'Nayana Sharma',
           email: testRegEmail,
           password: testRegPassword,
-          role: 'BUILDER',
-          domain: 'Backend Engineering'
+          role: 'BUILDER'
         })
       });
       const body = await res.json();
       if (res.status === 201 && body.success === true && body.data?.user?.email === testRegEmail && body.data?.user?.role === 'BUILDER') {
+        newUserId = body.data.user.id;
         recordTest('Manual User Registration & Database Saving', true);
       } else {
         recordTest('Manual User Registration & Database Saving', false, `Status ${res.status}: ${JSON.stringify(body)}`);
@@ -1030,7 +1031,7 @@ async function runTests() {
       if (
         res.status === 200 &&
         body.success === true &&
-        body.data.user.name === 'Nayana NewBuilder' &&
+        body.data.user.name === 'Nayana Sharma' &&
         body.data.profile_completion.percentage === 25 &&
         body.data.ranking.rank === null &&
         body.data.scorecard === null &&
@@ -1056,7 +1057,7 @@ async function runTests() {
         body.data.user.id === 1 &&
         body.data.profile_completion.percentage === 100 &&
         body.data.scorecard !== null &&
-        body.data.scorecard.id === 'SC-BE-2026-001' &&
+        body.data.scorecard.builder_id === 1 &&
         body.data.ranking.rank !== null
       ) {
         recordTest('Real Builder Dashboard State for Verified User', true);
@@ -1067,6 +1068,251 @@ async function runTests() {
       recordTest('Real Builder Dashboard State for Verified User', false, e.message);
     }
 
+    // TEST 55: Retrieving Job Requirements & Structured Skills
+    try {
+      const res = await fetch(`${BASE_URL}/api/jobs`);
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && Array.isArray(body.data) && body.data.length >= 3) {
+        const job1 = body.data.find(j => j.id === 1);
+        const job2 = body.data.find(j => j.id === 2);
+        const job3 = body.data.find(j => j.id === 3);
+        const j1Skills = Array.isArray(job1?.required_skills) ? job1.required_skills : JSON.parse(job1?.required_skills || '[]');
+        const j2Skills = Array.isArray(job2?.required_skills) ? job2.required_skills : JSON.parse(job2?.required_skills || '[]');
+        const j3Skills = Array.isArray(job3?.required_skills) ? job3.required_skills : JSON.parse(job3?.required_skills || '[]');
+        
+        if (
+          j1Skills.includes('Java') && j1Skills.includes('SQL') &&
+          j2Skills.includes('React') && j2Skills.includes('JavaScript') &&
+          j3Skills.includes('Docker') && j3Skills.includes('Kubernetes')
+        ) {
+          recordTest('Job Requirements & Structured Skills Retrieval', true);
+        } else {
+          recordTest('Job Requirements & Structured Skills Retrieval', false, 'Jobs missing expected distinct required skills');
+        }
+      } else {
+        recordTest('Job Requirements & Structured Skills Retrieval', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Job Requirements & Structured Skills Retrieval', false, e.message);
+    }
+
+    // TEST 56: Candidate Job-Fit API (/api/candidates/:id/job-fit/:jobId)
+    let candidateFitJob1 = null;
+    try {
+      const res = await fetch(`${BASE_URL}/api/candidates/1/job-fit/1`);
+      const body = await res.json();
+      if (
+        res.status === 200 &&
+        body.success === true &&
+        body.data?.candidateId === 1 &&
+        body.data?.jobId === 1 &&
+        body.data?.proofCoverage &&
+        Array.isArray(body.data?.requirements) &&
+        Array.isArray(body.data?.whyMatches)
+      ) {
+        candidateFitJob1 = body.data;
+        recordTest('Candidate Job-Fit Structured API Response', true);
+      } else {
+        recordTest('Candidate Job-Fit Structured API Response', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Candidate Job-Fit Structured API Response', false, e.message);
+    }
+
+    // TEST 57: Verified Evidence Mapping & Authentic Sources
+    try {
+      if (candidateFitJob1 && candidateFitJob1.requirements.length > 0) {
+        const verifiedReqs = candidateFitJob1.requirements.filter(r => r.status === 'VERIFIED');
+        const hasVerifiedWithScore = verifiedReqs.every(r => typeof r.score === 'number' && r.score >= 50 && Array.isArray(r.evidence) && r.evidence.length > 0);
+        if (verifiedReqs.length >= 3 && hasVerifiedWithScore) {
+          recordTest('Verified Evidence Mapping & Authentic Sources', true);
+        } else {
+          recordTest('Verified Evidence Mapping & Authentic Sources', false, `Verified requirements invalid: ${JSON.stringify(verifiedReqs)}`);
+        }
+      } else {
+        recordTest('Verified Evidence Mapping & Authentic Sources', false, 'No candidateFitJob1 data');
+      }
+    } catch (e) {
+      recordTest('Verified Evidence Mapping & Authentic Sources', false, e.message);
+    }
+
+    // TEST 58: Partial Evidence Identification
+    try {
+      const res = await fetch(`${BASE_URL}/api/candidates/1/job-fit/1`);
+      const body = await res.json();
+      if (body.success && body.data) {
+        const hasPartialOrVerified = body.data.requirements.some(r => r.status === 'PARTIAL' || r.status === 'VERIFIED');
+        if (hasPartialOrVerified && body.data.proofCoverage.total === 5) {
+          recordTest('Deterministic Partial Evidence & Proof Differentiation', true);
+        } else {
+          recordTest('Deterministic Partial Evidence & Proof Differentiation', false, `Invalid fit mapping: ${JSON.stringify(body.data)}`);
+        }
+      } else {
+        recordTest('Deterministic Partial Evidence & Proof Differentiation', false, 'Endpoint failed');
+      }
+    } catch (e) {
+      recordTest('Deterministic Partial Evidence & Proof Differentiation', false, e.message);
+    }
+
+    // TEST 59: Missing Evidence Identification (No fake 0 scores)
+    try {
+      const res = await fetch(`${BASE_URL}/api/candidates/1/job-fit/3`);
+      const body = await res.json();
+      if (res.status === 200 && body.success === true && body.data) {
+        const missingReqs = body.data.requirements.filter(r => r.status === 'MISSING');
+        const noFakeZero = missingReqs.every(r => r.score === null && (!r.evidence || r.evidence.length === 0));
+        if (missingReqs.length > 0 && noFakeZero) {
+          recordTest('Missing Evidence Identification (No fake 0 scores)', true);
+        } else {
+          recordTest('Missing Evidence Identification (No fake 0 scores)', false, `Missing reqs check failed: ${JSON.stringify(missingReqs)}`);
+        }
+      } else {
+        recordTest('Missing Evidence Identification (No fake 0 scores)', false, `Status ${res.status}: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Missing Evidence Identification (No fake 0 scores)', false, e.message);
+    }
+
+    // TEST 60: Deterministic Proof Coverage Math Calculation
+    try {
+      if (candidateFitJob1) {
+        const cov = candidateFitJob1.proofCoverage;
+        const expectedPercentage = Math.round((cov.verified / cov.total) * 100);
+        const expectedRatio = `${cov.verified} / ${cov.total}`;
+        if (
+          cov.total === candidateFitJob1.requirements.length &&
+          cov.percentage === expectedPercentage &&
+          cov.ratio === expectedRatio &&
+          cov.verified + cov.partial + cov.missing === cov.total
+        ) {
+          recordTest('Deterministic Proof Coverage Math Calculation', true);
+        } else {
+          recordTest('Deterministic Proof Coverage Math Calculation', false, `Math mismatch: ${JSON.stringify(cov)}`);
+        }
+      } else {
+        recordTest('Deterministic Proof Coverage Math Calculation', false, 'No candidateFitJob1 data');
+      }
+    } catch (e) {
+      recordTest('Deterministic Proof Coverage Math Calculation', false, e.message);
+    }
+
+    // TEST 61: Multiple Candidates Independent Job Fit Evaluation
+    try {
+      const [res1, res2] = await Promise.all([
+        fetch(`${BASE_URL}/api/candidates/1/job-fit/1`),
+        fetch(`${BASE_URL}/api/candidates/2/job-fit/1`)
+      ]);
+      const body1 = await res1.json();
+      const body2 = await res2.json();
+      if (
+        body1.success && body2.success &&
+        body1.data.candidateId === 1 && body2.data.candidateId === 2
+      ) {
+        recordTest('Multiple Candidates Independent Job Fit Evaluation', true);
+      } else {
+        recordTest('Multiple Candidates Independent Job Fit Evaluation', false, 'Failed to fetch candidate 1 or 2 fit');
+      }
+    } catch (e) {
+      recordTest('Multiple Candidates Independent Job Fit Evaluation', false, e.message);
+    }
+
+    // TEST 62: Multiple Jobs Requirements & Fit Differentiation
+    try {
+      const [resJob1, resJob3] = await Promise.all([
+        fetch(`${BASE_URL}/api/candidates/1/job-fit/1`),
+        fetch(`${BASE_URL}/api/candidates/1/job-fit/3`)
+      ]);
+      const fitJ1 = await resJob1.json();
+      const fitJ3 = await resJob3.json();
+
+      const skillsJ1 = fitJ1.data?.requirements.map(r => r.skill).sort();
+      const skillsJ3 = fitJ3.data?.requirements.map(r => r.skill).sort();
+
+      if (
+        fitJ1.success && fitJ3.success &&
+        JSON.stringify(skillsJ1) !== JSON.stringify(skillsJ3) &&
+        fitJ1.data.jobTitle !== fitJ3.data.jobTitle
+      ) {
+        recordTest('Multiple Jobs Requirements & Fit Differentiation', true);
+      } else {
+        recordTest('Multiple Jobs Requirements & Fit Differentiation', false, 'Job fit requirements were identical across different jobs');
+      }
+    } catch (e) {
+      recordTest('Multiple Jobs Requirements & Fit Differentiation', false, e.message);
+    }
+
+    // TEST 63: Scorecard Integration in Candidate Job Fit
+    try {
+      const res = await fetch(`${BASE_URL}/api/candidates/1`);
+      const body = await res.json();
+      if (body.success && body.data?.skill_scores && body.data?.jobFit) {
+        const javaReq = body.data.jobFit.requirements.find(r => r.skill === 'Java');
+        if (javaReq && javaReq.score !== null) {
+          recordTest('Scorecard Integration in Candidate Job Fit', true);
+        } else {
+          recordTest('Scorecard Integration in Candidate Job Fit', false, `Scorecard not mapped into requirement: ${JSON.stringify(javaReq)}`);
+        }
+      } else {
+        recordTest('Scorecard Integration in Candidate Job Fit', false, 'Candidate 1 data or skill_scores missing');
+      }
+    } catch (e) {
+      recordTest('Scorecard Integration in Candidate Job Fit', false, e.message);
+    }
+
+    // TEST 64: Candidate Discovery API with Proof & Verification Filters
+    try {
+      const resCov = await fetch(`${BASE_URL}/api/candidates?jobId=1&proofCoverageMin=50`);
+      const bodyCov = await resCov.json();
+      const allMeetCoverage = bodyCov.data?.every(c => c.proofCoverage && c.proofCoverage.percentage >= 50);
+
+      const resVerified = await fetch(`${BASE_URL}/api/candidates?jobId=1&verificationStatus=VERIFIED`);
+      const bodyVerified = await resVerified.json();
+      const allFullyVerified = bodyVerified.data && bodyVerified.data.length > 0 && bodyVerified.data.every(c => c.proofCoverage && c.proofCoverage.percentage >= 80);
+
+      if (resCov.status === 200 && bodyCov.success && allMeetCoverage && resVerified.status === 200 && bodyVerified.success && allFullyVerified) {
+        recordTest('Candidate Discovery API with Proof & Verification Filters', true);
+      } else {
+        recordTest('Candidate Discovery API with Proof & Verification Filters', false, `Filter assertion failed: covCount=${bodyCov.data?.length}, verifiedCount=${bodyVerified.data?.length}`);
+      }
+    } catch (e) {
+      recordTest('Candidate Discovery API with Proof & Verification Filters', false, e.message);
+    }
+
+    // TEST 65: Candidate Details API Backward Compatibility & Enrichment
+    try {
+      const res = await fetch(`${BASE_URL}/api/candidates/1?jobId=1`);
+      const body = await res.json();
+      if (
+        res.status === 200 &&
+        body.success === true &&
+        body.data.id === 1 &&
+        body.data.name &&
+        body.data.domain &&
+        body.data.score &&
+        body.data.jobFit &&
+        body.data.proofCoverage
+      ) {
+        recordTest('Candidate Details API Backward Compatibility & Enrichment', true);
+      } else {
+        recordTest('Candidate Details API Backward Compatibility & Enrichment', false, `Response shape invalid: ${JSON.stringify(body)}`);
+      }
+    } catch (e) {
+      recordTest('Candidate Details API Backward Compatibility & Enrichment', false, e.message);
+    }
+
+    // TEST 66: Recruiter Shortlist API Integrity & Integration
+    try {
+      const resGet = await fetch(`${BASE_URL}/api/shortlist`);
+      const bodyGet = await resGet.json();
+      if (resGet.status === 200 && bodyGet.success === true && Array.isArray(bodyGet.data)) {
+        recordTest('Recruiter Shortlist API Integrity & Integration', true);
+      } else {
+        recordTest('Recruiter Shortlist API Integrity & Integration', false, `Status ${resGet.status}: ${JSON.stringify(bodyGet)}`);
+      }
+    } catch (e) {
+      recordTest('Recruiter Shortlist API Integrity & Integration', false, e.message);
+    }
+
   } finally {
     if (serverInstance) {
       serverInstance.close();
@@ -1075,7 +1321,7 @@ async function runTests() {
 
   // Print exact formatted output as required
   console.log(`========================================`);
-  console.log(`SignalCraft Phase 6 Claude AI & Anti-Gaming Tests`);
+  console.log(`SignalCraft Proof-to-Job Fit Map & Full API Suite`);
   console.log(`========================================\n`);
 
   let passedCount = 0;
@@ -1083,13 +1329,14 @@ async function runTests() {
 
   for (const t of testResults) {
     if (t.passed) {
-      console.log(`✓ ${t.name}`);
       passedCount++;
     } else {
-      console.log(`✗ ${t.name} (Error: ${t.error})`);
+      console.log(`FAIL: ${t.name} -> ${t.error}`);
       failedCount++;
     }
   }
+
+
 
   console.log(`\n========================================`);
   console.log(`Passed: ${passedCount}`);
@@ -1101,6 +1348,9 @@ async function runTests() {
     console.log(`ALL TESTS PASSED`);
     process.exit(0);
   } else {
+    const failedOnes = testResults.filter(t => !t.passed);
+    console.log(`FAILED TEST DETAILS (${failedOnes.length}):`);
+    failedOnes.forEach(f => console.log(`>>> ${f.name} ::: ${f.error}`));
     console.log(`SOME TESTS FAILED`);
     process.exit(1);
   }

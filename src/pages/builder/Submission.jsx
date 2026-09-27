@@ -1,8 +1,8 @@
 // src/pages/builder/Submission.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { createSubmission, runIntegrityCheck, runAIAnalysis } from '../../services/api';
+import { createSubmission, runIntegrityCheck, runAIAnalysis, getAssessmentByBuilder, getSubmissionByBuilder } from '../../services/api';
 
 export default function Submission() {
   const navigate = useNavigate();
@@ -10,8 +10,10 @@ export default function Submission() {
     builderSubmission,
     setBuilderSubmission,
     activeAssessmentId,
+    setActiveAssessmentId,
     setActiveSubmissionId,
-    refreshQueue
+    refreshQueue,
+    currentUser
   } = useApp();
 
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -22,15 +24,51 @@ export default function Submission() {
   const [aiData, setAiData] = useState(null);
 
   const [formData, setFormData] = useState({
-    repoUrl: builderSubmission.repoUrl || "https://github.com/rahul-sharma/signalcraft-order-service",
-    demoUrl: builderSubmission.demoUrl || "https://order-service-demo.signalcraft.dev",
-    explanation: builderSubmission.explanation || "Engineered a Spring Boot Order Service with pessimistic write-locks on inventory reservation and idempotent request hash tables.",
-    whatBuilt: builderSubmission.adr?.what || builderSubmission.adr?.whatBuilt || "Built an Order Management REST API with idempotent transaction filters, atomic stock reservations, and event rollbacks.",
-    whyApproach: builderSubmission.adr?.why || builderSubmission.adr?.whyApproach || "Atomic database decrement prevents thread contention while keeping database connection pool latencies below 25ms.",
-    alternatives: builderSubmission.adr?.alternatives || "Evaluated Redis Lua scripts for stock tracking vs PostgreSQL atomic updates. Chose PostgreSQL to maintain ACID guarantees with billing.",
-    tradeOffs: builderSubmission.adr?.tradeoffs || builderSubmission.adr?.tradeOffs || "Chose strong consistency over distributed horizontal sharding for the inventory table to eliminate reconciliation overhead.",
-    scalePlan: builderSubmission.adr?.scaling || builderSubmission.adr?.scalePlan || "Scale via tenant-based schema sharding and Kafka transactional outbox for fulfillment services.",
+    repoUrl: builderSubmission?.repoUrl || "",
+    demoUrl: builderSubmission?.demoUrl || "",
+    explanation: builderSubmission?.explanation || "",
+    whatBuilt: builderSubmission?.adr?.what || builderSubmission?.adr?.whatBuilt || "",
+    whyApproach: builderSubmission?.adr?.why || builderSubmission?.adr?.whyApproach || "",
+    alternatives: builderSubmission?.adr?.alternatives || "",
+    tradeOffs: builderSubmission?.adr?.tradeoffs || builderSubmission?.adr?.tradeOffs || "",
+    scalePlan: builderSubmission?.adr?.scaling || builderSubmission?.adr?.scalePlan || "",
   });
+
+  // Automatically fetch candidate's assessment ID and pre-populate previously submitted links
+  useEffect(() => {
+    if (currentUser?.id) {
+      const fetchBuilderWork = async () => {
+        try {
+          // 1. Fetch builder assessment
+          const assRes = await getAssessmentByBuilder(currentUser.id);
+          if (assRes.success && assRes.data?.id) {
+            if (setActiveAssessmentId) setActiveAssessmentId(assRes.data.id);
+          }
+
+          // 2. Fetch existing builder submission to pre-populate manually filled links & ADR
+          const subRes = await getSubmissionByBuilder(currentUser.id);
+          if (subRes.success && subRes.data) {
+            const sub = subRes.data;
+            const adr = sub.adr_content || {};
+            setFormData(prev => ({
+              repoUrl: sub.repository_url || prev.repoUrl,
+              demoUrl: sub.project_url || prev.demoUrl,
+              explanation: prev.explanation,
+              whatBuilt: adr.what || adr.whatBuilt || prev.whatBuilt,
+              whyApproach: adr.why || adr.whyApproach || prev.whyApproach,
+              alternatives: adr.alternatives || prev.alternatives,
+              tradeOffs: adr.tradeoffs || adr.tradeOffs || prev.tradeOffs,
+              scalePlan: adr.scaling || adr.scalePlan || prev.scalePlan
+            }));
+            if (setActiveSubmissionId) setActiveSubmissionId(sub.id);
+          }
+        } catch (err) {
+          console.warn("Could not prefetch builder work:", err);
+        }
+      };
+      fetchBuilderWork();
+    }
+  }, [currentUser?.id]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -42,8 +80,8 @@ export default function Submission() {
     setError(null);
 
     const payload = {
-      assessment_id: Number(activeAssessmentId || 1),
-      builder_id: 1,
+      assessment_id: activeAssessmentId ? Number(activeAssessmentId) : undefined,
+      builder_id: Number(currentUser?.id || 1),
       repository_url: formData.repoUrl,
       project_url: formData.demoUrl || null,
       adr_content: {
@@ -59,36 +97,41 @@ export default function Submission() {
       const res = await createSubmission(payload);
       if (res.success && res.data) {
         const submissionId = res.data.id;
-        setActiveSubmissionId(submissionId);
+        if (setActiveSubmissionId) setActiveSubmissionId(submissionId);
 
-        // Run mock integrity check and AI analysis via backend API
-        const intRes = await runIntegrityCheck(submissionId);
-        if (intRes.success && intRes.data) {
-          setIntegrityData(intRes.data);
+        if (res.data.integrity_status) {
+          setIntegrityData({
+            status: res.data.integrity_status,
+            similarity_score: res.data.similarity_score || 8,
+            checked_at: new Date().toISOString()
+          });
         }
 
-        const aiRes = await runAIAnalysis(submissionId);
-        if (aiRes.success && aiRes.data) {
-          setAiData(aiRes.data);
+        if (res.data.ai_advisory_rubric) {
+          setAiData(res.data.ai_advisory_rubric);
         }
 
-        await refreshQueue();
+        if (refreshQueue) {
+          await refreshQueue();
+        }
+
+        setBuilderSubmission(prev => ({
+          ...prev,
+          repoUrl: formData.repoUrl,
+          demoUrl: formData.demoUrl,
+          explanation: formData.explanation,
+          adr: payload.adr_content,
+          submitted: true,
+          statusStep: 4
+        }));
+
+        setIsSubmitted(true);
+      } else {
+        throw new Error(res.message || "Failed to save submission");
       }
-
-      setBuilderSubmission(prev => ({
-        ...prev,
-        repoUrl: formData.repoUrl,
-        demoUrl: formData.demoUrl,
-        explanation: formData.explanation,
-        adr: payload.adr_content,
-        submitted: true,
-        statusStep: 4
-      }));
-
-      setIsSubmitted(true);
     } catch (err) {
-      console.warn("Backend submission error, falling back to local state:", err);
-      setIsSubmitted(true);
+      console.error("Submission error:", err);
+      setError(err.message || "Failed to submit deliverables. Please check your links and try again.");
     } finally {
       setSubmitting(false);
     }

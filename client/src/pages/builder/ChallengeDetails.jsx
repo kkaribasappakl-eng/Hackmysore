@@ -7,7 +7,7 @@ import { getChallenge, startAssessment } from '../../services/api';
 export default function ChallengeDetails() {
   const { challengeId } = useParams();
   const navigate = useNavigate();
-  const { setActiveAssessmentId, challenges: cachedChallenges } = useApp();
+  const { setActiveAssessmentId, challenges: cachedChallenges, currentUser } = useApp();
 
   const idToFetch = challengeId || 1;
   const [challenge, setChallenge] = useState(
@@ -39,7 +39,7 @@ export default function ChallengeDetails() {
   const handleStartAssessment = async () => {
     setStarting(true);
     try {
-      const res = await startAssessment(challenge?.id || 1, 1);
+      const res = await startAssessment(challenge?.id || 1, currentUser?.id || 1);
       if (res.success && res.data?.id) {
         setActiveAssessmentId(res.data.id);
       }

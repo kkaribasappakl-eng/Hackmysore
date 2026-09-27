@@ -2,7 +2,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { initDB, db } from './db.js';
+import { initDB, ensureDemoData, db } from './db.js';
 
 // Route imports
 import authRouter from './routes/auth.js';
@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 4000;
 
 // Initialize SQLite database and seed data
 initDB();
+ensureDemoData();
 
 // Middleware
 app.use(cors({

@@ -1,4 +1,4 @@
-// src/context/AppContext.jsx
+// client/src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   getHealth,
@@ -53,11 +53,11 @@ export function AppProvider({ children }) {
   });
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Flow State Tracking
-  const [activeAssessmentId, setActiveAssessmentId] = useState(1);
-  const [activeSubmissionId, setActiveSubmissionId] = useState(1);
-  const [activeReviewId, setActiveReviewId] = useState(1);
-  const [activeScorecardId, setActiveScorecardId] = useState('SC-BE-2026-001');
+  // Flow State Tracking (Null by default for clean user isolation)
+  const [activeAssessmentId, setActiveAssessmentId] = useState(null);
+  const [activeSubmissionId, setActiveSubmissionId] = useState(null);
+  const [activeReviewId, setActiveReviewId] = useState(null);
+  const [activeScorecardId, setActiveScorecardId] = useState(null);
 
   // Recruiter dynamic state
   const [candidates, setCandidates] = useState([]);
@@ -200,6 +200,13 @@ export function AppProvider({ children }) {
   };
 
   const login = async (email, password, role) => {
+    // Reset any previous active flow IDs so new user starts completely isolated
+    setActiveAssessmentId(null);
+    setActiveSubmissionId(null);
+    setActiveReviewId(null);
+    setActiveScorecardId(null);
+    setUploadedResume(null);
+
     const res = await loginUser({ email, password, role });
     if (res.success && res.data?.user) {
       setCurrentUser(res.data.user);
@@ -218,6 +225,14 @@ export function AppProvider({ children }) {
   const logout = async () => {
     await logoutUser();
     setCurrentUser(null);
+    setActiveAssessmentId(null);
+    setActiveSubmissionId(null);
+    setActiveReviewId(null);
+    setActiveScorecardId(null);
+    setUploadedResume(null);
+    setBuilderUser(null);
+    setReviewerUser(null);
+    setRecruiterUser(null);
   };
 
   // Instant 1-Click Demo Login for Hackathon Judges
@@ -236,7 +251,10 @@ export function AppProvider({ children }) {
 
   // Resume Upload & Skill Extraction Flow
   const submitResume = async ({ builder_id, filename, resume_text }) => {
-    const targetBuilderId = builder_id || currentUser?.id || 1;
+    const targetBuilderId = builder_id || currentUser?.id;
+    if (!targetBuilderId) {
+      return { success: false, message: 'User must be authenticated to upload a resume.' };
+    }
     const res = await apiUploadResume({
       builder_id: targetBuilderId,
       filename: filename || 'resume.pdf',

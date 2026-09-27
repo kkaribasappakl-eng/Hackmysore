@@ -1,16 +1,16 @@
-// server/routes/jobs.js
 import express from 'express';
-import { db } from '../db.js';
+import { db, ensureDemoData } from '../db.js';
 
 const router = express.Router();
 
 // GET /api/jobs - Return all jobs
 router.get('/', (req, res) => {
   try {
+    ensureDemoData();
     const jobs = db.prepare('SELECT * FROM jobs').all();
     const formatted = jobs.map(j => ({
       ...j,
-      required_skills: j.required_skills ? JSON.parse(j.required_skills) : []
+      required_skills: j.required_skills ? (typeof j.required_skills === 'string' ? JSON.parse(j.required_skills) : j.required_skills) : []
     }));
     return res.status(200).json({ success: true, data: formatted });
   } catch (err) {

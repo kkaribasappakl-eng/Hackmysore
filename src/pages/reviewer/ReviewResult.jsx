@@ -14,7 +14,7 @@ export default function ReviewResult() {
     tradeOffs: 4.5
   };
   const feedback = state.feedback || "Solid implementation of pessimistic inventory reservation with robust idempotency guarantees.";
-  const candidateName = state.submission?.candidateName || "Rahul Sharma";
+  const candidateName = state.submission?.candidateName || state.submission?.builder_name || "Engineering Candidate";
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-14">

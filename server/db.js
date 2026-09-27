@@ -560,6 +560,41 @@ export function ensureDemoData() {
         VALUES (1, 'SC-BE-2026-001', 'SCORECARD_VERIFIED', NULL, 1, 88, 'Initial verified credential issued for Backend Engineering domain', ?)
       `).run(now);
     }
+
+    // 6. Ensure Multiple Distinct Jobs exist for Evidence-Based Proof Mapping
+    db.prepare(`UPDATE jobs SET title = 'Backend Developer', required_skills = ? WHERE id = 1`).run(
+      JSON.stringify(['Java', 'SQL', 'REST API', 'Spring Boot', 'Debugging'])
+    );
+
+    const job2 = db.prepare('SELECT id FROM jobs WHERE id = 2').get();
+    if (job2) {
+      db.prepare(`UPDATE jobs SET title = 'Full Stack Engineer', required_skills = ? WHERE id = 2`).run(
+        JSON.stringify(['React', 'JavaScript', 'REST API', 'SQL', 'Node.js'])
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO jobs (company, title, description, required_skills, difficulty, created_by, status, created_at)
+        VALUES ('TechNova Solutions', 'Full Stack Engineer', 'Build scalable micro-frontend architectures and reactive REST/GraphQL interfaces.', ?, 'Intermediate', 5, 'OPEN', ?)
+      `).run(
+        JSON.stringify(['React', 'JavaScript', 'REST API', 'SQL', 'Node.js']),
+        now
+      );
+    }
+
+    const job3 = db.prepare('SELECT id FROM jobs WHERE id = 3').get();
+    if (job3) {
+      db.prepare(`UPDATE jobs SET title = 'Cloud & DevOps Engineer', required_skills = ? WHERE id = 3`).run(
+        JSON.stringify(['Docker', 'Kubernetes', 'CI/CD', 'Linux', 'AWS'])
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO jobs (company, title, description, required_skills, difficulty, created_by, status, created_at)
+        VALUES ('CloudScale Systems', 'Cloud & DevOps Engineer', 'Deploy and automate cloud-native Kubernetes workloads and multi-region CI/CD pipelines.', ?, 'Advanced', 5, 'OPEN', ?)
+      `).run(
+        JSON.stringify(['Docker', 'Kubernetes', 'CI/CD', 'Linux', 'AWS']),
+        now
+      );
+    }
   } catch (err) {
     console.error('Failed to ensure demo data:', err);
   }
@@ -599,17 +634,27 @@ export function formatDate(dateInput) {
 }
 
 // Seed questions for an assessment dynamically based on matched challenge & resume skills
-export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills = []) {
+export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills = [], forceRecreate = false) {
   try {
-    const existing = db.prepare('SELECT COUNT(*) as count FROM assessment_questions WHERE assessment_id = ?').get(assessmentId);
-    if (existing && existing.count > 0) {
-      return; // Already seeded for this assessment
+    if (forceRecreate) {
+      db.prepare('DELETE FROM assessment_answers WHERE assessment_id = ?').run(assessmentId);
+      db.prepare('DELETE FROM assessment_questions WHERE assessment_id = ?').run(assessmentId);
+    } else {
+      const existing = db.prepare('SELECT COUNT(*) as count FROM assessment_questions WHERE assessment_id = ?').get(assessmentId);
+      if (existing && existing.count > 0) {
+        return; // Already seeded for this assessment
+      }
     }
 
     const challenge = db.prepare('SELECT * FROM challenges WHERE id = ?').get(challengeId);
     const domain = challenge?.domain || 'Backend Engineering';
-    const isFrontend = domain.toLowerCase().includes('frontend') || skills.some(s => ['react', 'javascript', 'frontend', 'vue', 'next.js', 'css'].includes(String(s).toLowerCase()));
-    const isDebugging = challengeId === 2 || challenge?.title?.toLowerCase().includes('debugging') || skills.some(s => ['debugging', 'concurrency', 'performance'].includes(String(s).toLowerCase()));
+    const skillsLower = (skills || []).map(s => String(s).toLowerCase());
+
+    const isPython = skillsLower.some(s => ['python', 'fastapi', 'django', 'flask', 'pandas', 'numpy', 'pytorch', 'machine learning', 'tensorflow'].includes(s));
+    const isFrontend = !isPython && (domain.toLowerCase().includes('frontend') || skillsLower.some(s => ['react', 'vue', 'angular', 'next.js', 'tailwind css', 'redux', 'html5/css3', 'frontend'].includes(s)));
+    const isNode = !isPython && !isFrontend && skillsLower.some(s => ['node.js', 'express', 'nestjs', 'javascript', 'typescript'].includes(s));
+    const isGo = skillsLower.some(s => ['go', 'golang', 'gin'].includes(s));
+    const isDebugging = challengeId === 2 || challenge?.title?.toLowerCase().includes('debugging');
 
     const insertQ = db.prepare(`
       INSERT INTO assessment_questions (
@@ -617,7 +662,69 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    if (isFrontend) {
+    if (isPython) {
+      // Python Medium-Level Practical Assessment
+      insertQ.run(
+        assessmentId,
+        'CODING',
+        'Implement an asynchronous FastAPI route handler `POST /api/v1/metrics/batch` in Python. It must parse a list of telemetry events, asynchronously filter out duplicate records using an in-memory set, compute aggregate statistics (min, max, and mean latency), and return HTTP 201 Created with a summary JSON response.',
+        null,
+        'from fastapi import FastAPI, status\nfrom pydantic import BaseModel\nfrom typing import List\n\napp = FastAPI()\n\nclass Event(BaseModel):\n    id: str\n    latency_ms: float\n\n@app.post("/api/v1/metrics/batch", status_code=status.HTTP_201_CREATED)\nasync def process_batch(events: List[Event]):\n    seen, unique = set(), []\n    for e in events:\n        if e.id not in seen:\n            seen.add(e.id)\n            unique.append(e.latency_ms)\n    if not unique:\n        return {"count": 0, "min": 0, "max": 0, "mean": 0}\n    return {\n        "count": len(unique),\n        "min": min(unique),\n        "max": max(unique),\n        "mean": round(sum(unique) / len(unique), 2)\n    }',
+        25,
+        'Python',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'DEBUGGING',
+        'Diagnose the latency and blocking bug in this Python asynchronous service under 200 concurrent requests:\n\n```python\n@app.get("/analytics")\nasync def get_analytics(payload: list[int]):\n    # Synchronous CPU-intensive matrix calculation\n    res = heavy_cpu_matrix_transform(payload)\n    return {"result": res}\n```\nExplain why `async def` does not prevent request blocking and provide the fix using `asyncio.to_thread` or an executor.',
+        null,
+        'Because asyncio runs on a single event loop thread, synchronous CPU-intensive operations block the entire loop and freeze all incoming concurrent connections. Fix by delegating the CPU-bound operation to a thread or process pool executor: `res = await asyncio.to_thread(heavy_cpu_matrix_transform, payload)` or using `loop.run_in_executor(None, heavy_cpu_matrix_transform, payload)`.',
+        25,
+        'Debugging',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'SQL',
+        'Write a SQL query for SQLite/PostgreSQL to calculate the daily average response time and total error count (status_code >= 400) from an `api_logs` table for the last 14 days, grouped by day and sorted chronologically.',
+        null,
+        'SELECT date(created_at) as log_date, COUNT(*) as total_requests, AVG(latency_ms) as avg_latency, SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count FROM api_logs WHERE created_at >= date("now", "-14 days") GROUP BY log_date ORDER BY log_date ASC;',
+        20,
+        'SQL',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'REASONING',
+        'Explain the trade-offs between asynchronous event loops (FastAPI / asyncio) and multi-process WSGI architectures (Gunicorn with Django/Flask) for high-throughput microservices. Under what conditions does the Python Global Interpreter Lock (GIL) become a throughput bottleneck?',
+        null,
+        'Asyncio excels at high-concurrency I/O-bound workflows (network, database, HTTP) with minimal memory footprint per connection. However, due to Python Global Interpreter Lock (GIL), CPU-bound tasks saturate a single thread and block the event loop. Multi-process architectures like Gunicorn fork independent Python processes across multiple CPU cores, bypassing GIL contention at the cost of higher per-process memory consumption.',
+        15,
+        'Problem Solving',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'MCQ',
+        'In Python, what is the critical runtime performance and memory difference between a list comprehension and a generator expression when processing large datasets?',
+        JSON.stringify([
+          'Generator expressions compute items lazily on demand using minimal memory, whereas list comprehensions eagerly allocate the entire list in memory',
+          'List comprehensions automatically run concurrently in separate background threads',
+          'Generator expressions cannot be consumed inside for loops or iteration helpers',
+          'List comprehensions are restricted only to primitive numeric values'
+        ]),
+        'Generator expressions compute items lazily on demand using minimal memory, whereas list comprehensions eagerly allocate the entire list in memory',
+        15,
+        'Python',
+        'Intermediate'
+      );
+
+    } else if (isFrontend) {
       // 1. Coding Task (React / UI Components)
       insertQ.run(
         assessmentId,
@@ -639,7 +746,7 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Two major bugs: 1) Dependency array includes `events`, causing the WebSocket connection to disconnect and reconnect on every single incoming message. 2) No cleanup function closing `ws.close()`. Fix by using functional state updater `setEvents(prev => [...prev, JSON.parse(msg.data)])` and changing the dependency array to `[socketUrl]`, plus returning a cleanup `return () => ws.close();`.',
         25,
         'Debugging',
-        'Advanced'
+        'Intermediate'
       );
 
       // 3. State Management / Data Task (JavaScript / REST API)
@@ -683,8 +790,132 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Intermediate'
       );
 
+    } else if (isNode) {
+      // Node.js & JavaScript Medium-Level Practical Assessment
+      insertQ.run(
+        assessmentId,
+        'CODING',
+        'Implement an Express.js middleware and route handler `POST /api/orders` in Node.js. It must validate that `items` array is non-empty, compute the total price, handle errors asynchronously using `try/catch` with `next(err)`, and return HTTP 201 Created with the created order object.',
+        null,
+        'import express from "express";\nconst router = express.Router();\nrouter.post("/api/orders", async (req, res, next) => {\n  try {\n    const { items, customerId } = req.body;\n    if (!items || !Array.isArray(items) || items.length === 0) {\n      return res.status(400).json({ error: "Non-empty items array is required" });\n    }\n    const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);\n    const order = await orderService.create({ customerId, items, total, status: "PENDING" });\n    res.status(201).json(order);\n  } catch (err) {\n    next(err);\n  }\n});',
+        25,
+        'JavaScript',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'DEBUGGING',
+        'Diagnose the latency issue in this Node.js endpoint where event loop lag climbs under 500 concurrent connections:\n\n```javascript\napp.get("/data", async (req, res) => {\n  const raw = fs.readFileSync("./large-catalog.json", "utf-8");\n  const parsed = JSON.parse(raw);\n  res.json({ count: parsed.length });\n});\n```\nExplain why `fs.readFileSync` blocks the single-threaded Node.js event loop and provide the non-blocking asynchronous streaming or cached solution.',
+        null,
+        'Synchronous file I/O `fs.readFileSync` completely blocks the single JavaScript main thread on the event loop, pausing all concurrent HTTP request processing and socket I/O. Fix by using asynchronous promises `fs.promises.readFile` with memory caching, or streaming via `fs.createReadStream` piped to JSON stream parsers.',
+        25,
+        'Debugging',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'SQL',
+        'Write a SQL query to find the top 5 customers by total order spend for completed orders in the last 30 days. Return customer_name, total_orders count, and total_spent, ordered descending by total_spent.',
+        null,
+        'SELECT c.name as customer_name, COUNT(o.id) as total_orders, SUM(o.total_amount) as total_spent FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = "COMPLETED" GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 5;',
+        20,
+        'SQL',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'REASONING',
+        'What are the key architectural trade-offs between REST APIs and GraphQL for data retrieval across microservices? How does Node.js handle backpressure when streaming large payloads over HTTP?',
+        null,
+        'REST provides straightforward HTTP caching, predictable network boundaries, and established status code semantics, but can suffer from over-fetching or under-fetching. GraphQL eliminates over-fetching by letting clients request precise fields, but complicates HTTP-layer caching and introduces N+1 query vulnerability. In Node.js, streams handle backpressure via the `.pipe()` method or `pipeline()`, pausing the readable stream when the downstream writable stream buffer is full.',
+        15,
+        'Problem Solving',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'MCQ',
+        'In the Node.js event loop, when do `process.nextTick` callbacks execute relative to Promise microtasks and timer callbacks?',
+        JSON.stringify([
+          '`process.nextTick` callbacks run immediately after the current operation finishes, before Promise microtasks and before advancing the event loop phase',
+          '`process.nextTick` callbacks only run during the Close Callbacks phase',
+          'Promise microtasks always run before `process.nextTick` callbacks',
+          '`process.nextTick` callbacks run synchronously every 100 milliseconds'
+        ]),
+        '`process.nextTick` callbacks run immediately after the current operation finishes, before Promise microtasks and before advancing the event loop phase',
+        15,
+        'JavaScript',
+        'Intermediate'
+      );
+
+    } else if (isGo) {
+      // Go Systems Practical Assessment
+      insertQ.run(
+        assessmentId,
+        'CODING',
+        'Implement a thread-safe in-memory cache in Go with `Set(key string, val interface{})` and `Get(key string) (interface{}, bool)` using `sync.RWMutex` to prevent concurrent map read/write panics.',
+        null,
+        'type SafeCache struct { mu sync.RWMutex; store map[string]interface{} }\nfunc NewCache() *SafeCache { return &SafeCache{store: make(map[string]interface{})} }\nfunc (c *SafeCache) Set(k string, v interface{}) { c.mu.Lock(); defer c.mu.Unlock(); c.store[k] = v }\nfunc (c *SafeCache) Get(k string) (interface{}, bool) { c.mu.RLock(); defer c.mu.RUnlock(); val, ok := c.store[k]; return val, ok }',
+        25,
+        'Go',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'DEBUGGING',
+        'Identify the goroutine leak in this Go snippet where worker goroutines block indefinitely when client context times out:\n\n```go\nfunc queryService(ctx context.Context) string {\n    ch := make(chan string)\n    go func() { ch <- fetchRemote() }()\n    select {\n    case res := <-ch: return res\n    case <-ctx.Done(): return "timeout"\n    }\n}\n```\nExplain root cause and provide the fix using a buffered channel.',
+        null,
+        'Because `ch` is an unbuffered channel (`make(chan string)`), when `ctx.Done()` fires first, the receiving select exits. The worker goroutine attempting `ch <- fetchRemote()` blocks forever waiting for a receiver, leaking goroutines. Fix by creating a buffered channel `ch := make(chan string, 1)` so the goroutine can write and exit without blocking.',
+        25,
+        'Debugging',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'SQL',
+        'Write a SQL query to find top 5 slowest endpoints by p95 response time over the last 24 hours, returning endpoint, request count, and p95 latency.',
+        null,
+        'SELECT endpoint, COUNT(*) as req_count, AVG(latency_ms) as avg_latency FROM api_logs WHERE created_at >= datetime("now", "-24 hours") GROUP BY endpoint ORDER BY avg_latency DESC LIMIT 5;',
+        20,
+        'SQL',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'REASONING',
+        'Explain the trade-offs between goroutines and OS threads in high-concurrency network servers. How does Go\'s M:N runtime scheduler manage thread context switching efficiently?',
+        null,
+        'Goroutines are user-space threads with small 2KB stack frames that grow dynamically, whereas OS threads require 1MB+ and involve kernel context switches. Go uses an M:N work-stealing scheduler where M goroutines run across N OS threads. When a goroutine blocks on a network socket, the runtime suspends it without blocking the underlying OS thread, allowing other goroutines to execute seamlessly.',
+        15,
+        'Problem Solving',
+        'Intermediate'
+      );
+
+      insertQ.run(
+        assessmentId,
+        'MCQ',
+        'What occurs at runtime in Go when attempting to send a value to a channel that has already been closed?',
+        JSON.stringify([
+          'A runtime panic is triggered: "send on closed channel"',
+          'The sent value is silently dropped without error',
+          'The channel automatically reopens to accept the payload',
+          'The current goroutine blocks indefinitely without terminating'
+        ]),
+        'A runtime panic is triggered: "send on closed channel"',
+        15,
+        'Go',
+        'Intermediate'
+      );
+
     } else if (isDebugging) {
-      // High-volume Debugging & Performance Tasks
+      // High-volume Debugging & Performance Tasks (Intermediate)
       insertQ.run(
         assessmentId,
         'CODING',
@@ -693,7 +924,7 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'class TokenBucketRateLimiter { private final long capacity; private final AtomicLong tokens; private final AtomicLong lastRefill; public TokenBucketRateLimiter(long capacity) { this.capacity = capacity; this.tokens = new AtomicLong(capacity); this.lastRefill = new AtomicLong(System.currentTimeMillis()); } public boolean allowRequest() { refill(); return tokens.getAndUpdate(t -> t > 0 ? t - 1 : 0) > 0; } }',
         25,
         'Performance',
-        'Advanced'
+        'Intermediate'
       );
 
       insertQ.run(
@@ -704,18 +935,18 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Connection starvation caused by pool size of 10 being heavily undersized for 5000 concurrent requests with long transactions. Threads queue up and time out after 30 seconds. Solution: Increase Hikari pool size based on CPU cores * 2 + effective spindle count (e.g. 30-50), reduce transaction hold times, and add read-replicas.',
         25,
         'Debugging',
-        'Advanced'
+        'Intermediate'
       );
 
       insertQ.run(
         assessmentId,
         'SQL',
-        'Write an EXPLAIN ANALYZE-optimized SQL query that scans 10 million transactions to retrieve hourly throughput and 99th percentile execution time, utilizing composite indexes on `(tenant_id, created_at)`.',
+        'Write an EXPLAIN ANALYZE-optimized SQL query that scans transactions to retrieve hourly throughput and average execution time, utilizing composite indexes on `(tenant_id, created_at)`.',
         null,
         'SELECT strftime("%Y-%m-%d %H:00:00", created_at) as hour, COUNT(*) as tx_count, AVG(execution_time_ms) as avg_time FROM transactions WHERE tenant_id = ? AND created_at >= datetime("now", "-24 hours") GROUP BY hour ORDER BY hour ASC;',
         20,
         'SQL',
-        'Advanced'
+        'Intermediate'
       );
 
       insertQ.run(
@@ -726,7 +957,7 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Distributed tracing provides causal request context across network hops with span timings, isolating the specific bottleneck service. Log aggregation provides verbose localized details but lacks unified request DAG visualization and suffers high storage costs under heavy traffic.',
         15,
         'Problem Solving',
-        'Advanced'
+        'Intermediate'
       );
 
       insertQ.run(
@@ -746,7 +977,7 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
       );
 
     } else {
-      // Standard Backend Engineering Tasks (Java, Spring Boot, SQL, REST API)
+      // Standard Backend Engineering Tasks (Java, Spring Boot, SQL, REST API) - Medium Level
       insertQ.run(
         assessmentId,
         'CODING',
@@ -766,7 +997,7 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Race condition / lost update caused by non-atomic check-then-act. Fix by using SELECT ... FOR UPDATE (pessimistic write locking) or atomic database decrement: UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?.',
         25,
         'Debugging',
-        'Advanced'
+        'Intermediate'
       );
 
       insertQ.run(

@@ -52,29 +52,28 @@ export default function ReviewSubmission() {
           submission_id: s.id,
           assessment_id: s.assessment_id,
           builder_id: s.builder_id,
-          candidateName: s.builder ? s.builder.name : "Rahul Sharma",
-          challengeTitle: s.challenge ? s.challenge.title : "Backend Order Management API",
-          skills: s.challenge?.skills || ["Java", "SQL", "REST API"],
-          assessmentScore: s.assessment?.score !== undefined && s.assessment?.score !== null ? s.assessment.score : 85,
-          skillScores: s.assessment?.skill_scores || { 'Java': 86, 'SQL': 82, 'REST API': 91, 'Debugging': 88, 'Problem Solving': 89 },
+          candidateName: s.builder?.name || "Candidate",
+          challengeTitle: s.challenge?.title || "Practical Engineering Challenge",
+          assessmentScore: s.assessment?.score !== undefined && s.assessment?.score !== null ? s.assessment.score : 0,
+          skillScores: s.assessment?.skill_scores ? (typeof s.assessment.skill_scores === 'string' ? JSON.parse(s.assessment.skill_scores) : s.assessment.skill_scores) : {},
           candidateAnswers: s.assessment_answers || s.assessment?.answers || [],
           aiPreScore: aiData.overall_suggested_score || aiData.advisoryScore || 86,
           integrityStatus: s.integrity_status === 'PASSED' ? `Pass (${originality}% Originality)` : (s.integrity_status || `Pass (${originality}% Originality)`),
           similarityScore: similarity,
           originalityScore: originality,
-          repoUrl: s.repository_url || "https://github.com/rahul-sharma/signalcraft-order-service",
-          demoUrl: s.project_url || "https://order-service-demo.signalcraft.dev",
+          repoUrl: s.repository_url || "",
+          demoUrl: s.project_url || "",
           antiGamingReport: antiGaming,
           adr: s.adr_content ? {
-            whatBuilt: s.adr_content.what || s.adr_content.whatBuilt,
-            whyApproach: s.adr_content.why || s.adr_content.whyApproach,
-            alternatives: s.adr_content.alternatives,
-            tradeOffs: s.adr_content.tradeoffs || s.adr_content.tradeOffs,
-            scalePlan: s.adr_content.scaling || s.adr_content.scalePlan
+            whatBuilt: s.adr_content.what || s.adr_content.whatBuilt || "Architecture Record Submitted",
+            whyApproach: s.adr_content.why || s.adr_content.whyApproach || "",
+            alternatives: s.adr_content.alternatives || "",
+            tradeOffs: s.adr_content.tradeoffs || s.adr_content.tradeOffs || "",
+            scalePlan: s.adr_content.scaling || s.adr_content.scalePlan || ""
           } : null,
           aiAnalysis: {
             summary: aiData.summary || s.ai_summary || "High code modularity with well-structured controllers and service layers.",
-            testCoverage: aiData.testCoverage || "88% unit test coverage detected across order services.",
+            testCoverage: aiData.testCoverage || "Automated test coverage verified across submitted services.",
             flaggedItems: antiGaming.suspicious_patterns_found > 0 ? "Flags detected" : "None. No known boilerplate copy-paste patterns detected.",
             advisoryScore: aiData.overall_suggested_score || aiData.advisoryScore || 86,
             adrConsistency: s.adr_consistency_score || aiData.adr_consistency || 88,
@@ -88,82 +87,36 @@ export default function ReviewSubmission() {
             detected_strengths: aiData.detected_strengths || [
               "Clean modular architecture with well-defined separation of concerns.",
               "Deterministic database row-level locking prevents thread race conditions.",
-              "Well-reasoned trade-off defense prioritizing ACID consistency over complex sharding."
+              "Well-reasoned trade-off defense in Architecture Decision Record."
             ],
             detected_weaknesses: aiData.detected_weaknesses || [
-              "Consider connection pool saturation benchmarks under burst flash-sale load.",
               "Recommend adding explicit dead-letter queue handling for asynchronous event pipelines."
             ],
-            adr_critique: aiData.adr_critique || "ADR clearly defends atomic database decrements over optimistic retries for high concurrency.",
+            adr_critique: aiData.adr_critique || "ADR clearly explains system design choices and trade-offs.",
             anti_gaming_observations: aiData.anti_gaming_observations || "Original engineering reasoning with no superficial prompt artifacts.",
             provider: aiData.provider || "claude-3-5-sonnet (reference)",
             notice: "AI Reference Only"
           }
         });
       } else {
-        // Fallback to queue item or default
+        // Fallback to queue item
         const fromQueue = reviewQueue.find(q => String(q.id) === String(subId) || String(q.submission_id) === String(subId));
         if (fromQueue) {
-          setSubmission(fromQueue);
-        } else {
           setSubmission({
-            id: subId,
-            submission_id: subId,
-            assessment_id: 1,
-            builder_id: 1,
-            candidateName: "Rahul Sharma",
-            challengeTitle: "Backend Order Management API",
-            skills: ["Java", "SQL", "REST API"],
-            assessmentScore: 85,
-            skillScores: { 'Java': 86, 'SQL': 82, 'REST API': 91, 'Debugging': 88, 'Problem Solving': 89 },
-            candidateAnswers: [
-              { question_type: 'CODING', skill: 'Java', question_text: 'Implement an API endpoint that creates a new order.', answer: '@PostMapping public ResponseEntity<OrderResponse> createOrder(@RequestBody OrderRequest req) { ... }' },
-              { question_type: 'DEBUGGING', skill: 'Debugging', question_text: 'Identify the issue in this backend code and explain how you would fix it.', answer: 'The stock check lacks transactional locking. Fix by using SELECT FOR UPDATE or atomic decrement.' },
-              { question_type: 'SQL', skill: 'SQL', question_text: 'Write a query to find the top 5 customers by total order value.', answer: 'SELECT c.id, c.name, SUM(o.total_amount) AS total FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.id, c.name ORDER BY total DESC LIMIT 5;' },
-              { question_type: 'REASONING', skill: 'Problem Solving', question_text: 'Why did you choose REST for this system? What trade-offs did you consider?', answer: 'REST provides predictable caching, widespread tooling, and clean decoupling between inventory and client microservices.' },
-              { question_type: 'MCQ', skill: 'REST API', question_text: 'Which HTTP status code is most appropriate for a newly created resource?', answer: '201 Created' }
-            ],
-            aiPreScore: 86,
-            integrityStatus: "Pass (92% Originality)",
-            similarityScore: 8,
-            originalityScore: 92,
-            repoUrl: "https://github.com/rahul-sharma/signalcraft-order-service",
-            demoUrl: "https://order-service-demo.signalcraft.dev",
-            adr: {
-              whatBuilt: "Built an Order Management REST API with idempotent transaction filters, atomic stock reservations, and event rollbacks.",
-              whyApproach: "Atomic database decrement prevents thread contention while keeping database connection pool latencies below 25ms.",
-              alternatives: "Evaluated Redis Lua scripts for stock tracking vs PostgreSQL atomic updates. Chose PostgreSQL to maintain ACID guarantees with billing.",
-              tradeOffs: "Chose strong consistency over distributed horizontal sharding for the inventory table to eliminate reconciliation overhead.",
-              scalePlan: "Scale via tenant-based schema sharding and Kafka transactional outbox for fulfillment services."
-            },
-            aiAnalysis: {
-              summary: "High code modularity with well-structured controllers and service layers. Idempotency filter correctly catches duplicate tokens.",
-              testCoverage: "88% unit test coverage detected across order services.",
-              flaggedItems: "None. No known boilerplate copy-paste patterns detected.",
-              advisoryScore: 86,
-              adrConsistency: 88,
-              reasoningQuality: 84,
-              suggested_rubrics: {
-                correctness: 4.5,
-                architecture: 4.2,
-                code_quality: 4.0,
-                tradeoff_awareness: 4.5
-              },
-              detected_strengths: [
-                "Clean modular architecture with well-defined separation of concerns.",
-                "Deterministic database row-level locking prevents thread race conditions.",
-                "Well-reasoned trade-off defense prioritizing ACID consistency over complex sharding."
-              ],
-              detected_weaknesses: [
-                "Consider connection pool saturation benchmarks under burst flash-sale load.",
-                "Recommend adding explicit dead-letter queue handling for asynchronous event pipelines."
-              ],
-              adr_critique: "ADR clearly defends atomic database decrements over optimistic retries for high concurrency.",
-              anti_gaming_observations: "Original engineering reasoning with no superficial prompt artifacts.",
-              provider: "claude-3-5-sonnet (reference)",
-              notice: "AI Reference Only"
-            }
+            ...fromQueue,
+            candidateName: fromQueue.candidateName || fromQueue.builder_name || "Candidate",
+            repoUrl: fromQueue.repository_url || fromQueue.repoUrl || "",
+            demoUrl: fromQueue.project_url || fromQueue.demoUrl || "",
+            adr: fromQueue.adr ? {
+              whatBuilt: fromQueue.adr.what || fromQueue.adr.whatBuilt || "",
+              whyApproach: fromQueue.adr.why || fromQueue.adr.whyApproach || "",
+              alternatives: fromQueue.adr.alternatives || "",
+              tradeOffs: fromQueue.adr.tradeoffs || fromQueue.adr.tradeOffs || "",
+              scalePlan: fromQueue.adr.scaling || fromQueue.adr.scalePlan || ""
+            } : null
           });
+        } else {
+          setError("Submission not found in active review queue.");
         }
       }
     } catch (err) {
@@ -353,19 +306,27 @@ export default function ReviewSubmission() {
             Challenge: <strong className="text-white">{submission.challengeTitle}</strong>
           </p>
           <div className="flex flex-wrap items-center gap-3 mt-3 text-xs">
-            <a
-              href={submission.repoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:underline flex items-center gap-1 font-mono"
-            >
-              <span>Repo:</span> {submission.repoUrl}
-            </a>
+            {submission.repoUrl ? (
+              <a
+                href={submission.repoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 hover:underline flex items-center gap-1.5 font-mono font-medium"
+              >
+                <span>📦 Candidate Repo:</span> {submission.repoUrl}
+              </a>
+            ) : (
+              <span className="text-slate-500 font-mono text-xs">No repository link submitted</span>
+            )}
             {submission.demoUrl && (
-              <>
-                <span className="text-slate-600">•</span>
-                <span className="text-slate-400 font-mono">Demo: {submission.demoUrl}</span>
-              </>
+              <a
+                href={submission.demoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 hover:underline flex items-center gap-1.5 font-mono font-medium"
+              >
+                <span>🚀 Live Demo:</span> {submission.demoUrl}
+              </a>
             )}
           </div>
         </div>

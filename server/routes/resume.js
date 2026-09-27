@@ -6,12 +6,40 @@ const router = express.Router();
 
 // Known technical skills dictionary with categories
 const SKILL_TAXONOMY = {
-  // Backend & Core
+  // Python & Data / ML
+  'Python': { domain: 'Backend Engineering', weight: 1.0, tags: ['language', 'backend', 'data'] },
+  'FastAPI': { domain: 'Backend Engineering', weight: 1.0, tags: ['api', 'async', 'python'] },
+  'Django': { domain: 'Backend Engineering', weight: 0.9, tags: ['framework', 'mvc', 'python'] },
+  'Flask': { domain: 'Backend Engineering', weight: 0.8, tags: ['microframework', 'python', 'api'] },
+  'Pandas': { domain: 'Data Engineering', weight: 0.8, tags: ['data', 'analytics', 'python'] },
+  'NumPy': { domain: 'Data Engineering', weight: 0.8, tags: ['math', 'arrays', 'python'] },
+  'PyTorch': { domain: 'Machine Learning', weight: 0.9, tags: ['ai', 'deep-learning', 'python'] },
+  'Machine Learning': { domain: 'Machine Learning', weight: 0.9, tags: ['ai', 'models', 'algorithms'] },
+
+  // Node & JavaScript / TypeScript
+  'Node.js': { domain: 'Backend Engineering', weight: 1.0, tags: ['runtime', 'backend', 'async'] },
+  'Express': { domain: 'Backend Engineering', weight: 0.9, tags: ['framework', 'http', 'api'] },
+  'NestJS': { domain: 'Backend Engineering', weight: 0.9, tags: ['framework', 'typescript', 'backend'] },
+  'JavaScript': { domain: 'Frontend Engineering', weight: 0.9, tags: ['language', 'web', 'es6'] },
+  'TypeScript': { domain: 'Fullstack Engineering', weight: 0.9, tags: ['type-safety', 'frontend', 'backend'] },
+  'React': { domain: 'Frontend Engineering', weight: 1.0, tags: ['ui', 'components', 'spa'] },
+  'Next.js': { domain: 'Frontend Engineering', weight: 0.9, tags: ['ssr', 'react', 'fullstack'] },
+  'Tailwind CSS': { domain: 'Frontend Engineering', weight: 0.8, tags: ['css', 'styling', 'responsive'] },
+  'Redux': { domain: 'Frontend Engineering', weight: 0.8, tags: ['state', 'flux', 'ui'] },
+  'HTML5/CSS3': { domain: 'Frontend Engineering', weight: 0.8, tags: ['web', 'markup', 'styling'] },
+
+  // Go
+  'Go': { domain: 'Systems & Backend', weight: 1.0, tags: ['language', 'concurrency', 'systems'] },
+  'Golang': { domain: 'Systems & Backend', weight: 1.0, tags: ['language', 'concurrency', 'systems'] },
+  'Gin': { domain: 'Systems & Backend', weight: 0.9, tags: ['framework', 'http', 'go'] },
+
+  // Java & Backend Core
   'Java': { domain: 'Backend Engineering', weight: 1.0, tags: ['core', 'oop', 'jvm'] },
   'Spring Boot': { domain: 'Backend Engineering', weight: 1.0, tags: ['framework', 'backend', 'microservices'] },
   'SQL': { domain: 'Backend Engineering', weight: 0.9, tags: ['database', 'queries', 'rdbms'] },
   'PostgreSQL': { domain: 'Backend Engineering', weight: 0.9, tags: ['database', 'acid', 'sql'] },
   'MySQL': { domain: 'Backend Engineering', weight: 0.8, tags: ['database', 'sql'] },
+  'MongoDB': { domain: 'Backend Engineering', weight: 0.8, tags: ['nosql', 'document', 'database'] },
   'REST API': { domain: 'Backend Engineering', weight: 0.9, tags: ['api', 'http', 'architecture'] },
   'Microservices': { domain: 'Backend Engineering', weight: 0.9, tags: ['distributed', 'cloud', 'architecture'] },
   'Kafka': { domain: 'Backend Engineering', weight: 0.9, tags: ['streaming', 'events', 'concurrency'] },
@@ -19,28 +47,14 @@ const SKILL_TAXONOMY = {
   'Docker': { domain: 'DevOps / Cloud', weight: 0.8, tags: ['containerization', 'infrastructure'] },
   'Kubernetes': { domain: 'DevOps / Cloud', weight: 0.8, tags: ['orchestration', 'cloud'] },
   'Debugging': { domain: 'Engineering Core', weight: 0.9, tags: ['troubleshooting', 'performance'] },
-  'Concurrency': { domain: 'Backend Engineering', weight: 0.9, tags: ['threads', 'locking', 'parallel'] },
-
-  // Frontend
-  'React': { domain: 'Frontend Engineering', weight: 1.0, tags: ['ui', 'components', 'spa'] },
-  'JavaScript': { domain: 'Frontend Engineering', weight: 0.9, tags: ['language', 'web', 'es6'] },
-  'TypeScript': { domain: 'Frontend Engineering', weight: 0.9, tags: ['type-safety', 'frontend', 'backend'] },
-  'Next.js': { domain: 'Frontend Engineering', weight: 0.9, tags: ['ssr', 'react', 'fullstack'] },
-  'Tailwind CSS': { domain: 'Frontend Engineering', weight: 0.8, tags: ['css', 'styling', 'responsive'] },
-  'Redux': { domain: 'Frontend Engineering', weight: 0.8, tags: ['state', 'flux', 'ui'] },
-  'HTML5/CSS3': { domain: 'Frontend Engineering', weight: 0.8, tags: ['web', 'markup', 'styling'] },
-
-  // Python & Data
-  'Python': { domain: 'Backend Engineering', weight: 0.9, tags: ['language', 'backend', 'data'] },
-  'FastAPI': { domain: 'Backend Engineering', weight: 0.9, tags: ['api', 'async', 'python'] },
-  'Django': { domain: 'Backend Engineering', weight: 0.8, tags: ['framework', 'mvc', 'python'] }
+  'Concurrency': { domain: 'Backend Engineering', weight: 0.9, tags: ['threads', 'locking', 'parallel'] }
 };
 
 /**
  * Intelligent skill extraction from unstructured resume text
  */
 function extractSkillsFromText(text) {
-  if (!text || typeof text !== 'string') return { skills: ['Java', 'SQL', 'REST API', 'Spring Boot'], confidenceScores: {}, domain: 'Backend Engineering', experienceYears: 2.5 };
+  if (!text || typeof text !== 'string') return { skills: ['Software Engineering', 'Problem Solving', 'Data Structures', 'REST API'], confidenceScores: {}, domain: 'Backend Engineering', experienceYears: 2.5 };
 
   const lower = text.toLowerCase();
   const detected = [];
@@ -66,12 +80,12 @@ function extractSkillsFromText(text) {
 
   // Fallback if no skills detected
   if (detected.length === 0) {
-    detected.push('Java', 'SQL', 'REST API', 'Spring Boot');
-    confidenceScores['Java'] = 92;
-    confidenceScores['SQL'] = 88;
-    confidenceScores['REST API'] = 94;
-    confidenceScores['Spring Boot'] = 90;
-    domainCounts['Backend Engineering'] = 3.5;
+    detected.push('Software Engineering', 'Problem Solving', 'Data Structures', 'REST API');
+    confidenceScores['Software Engineering'] = 90;
+    confidenceScores['Problem Solving'] = 92;
+    confidenceScores['Data Structures'] = 88;
+    confidenceScores['REST API'] = 89;
+    domainCounts['Backend Engineering'] = 3.0;
   }
 
   // Determine primary domain
@@ -147,9 +161,16 @@ function matchChallengeForSkills(skills, domain) {
  */
 router.post('/upload', (req, res) => {
   try {
-    const { builder_id = 1, resume_text, filename = 'resume.pdf' } = req.body;
+    const { builder_id, resume_text, filename = 'resume.pdf' } = req.body;
 
-    const builderIdNum = Number(builder_id) || 1;
+    if (!builder_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'builder_id is required'
+      });
+    }
+
+    const builderIdNum = Number(builder_id);
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(builderIdNum);
 
     if (!user) {
@@ -168,27 +189,29 @@ router.post('/upload', (req, res) => {
     // 3. Find or create an IN_PROGRESS assessment for this builder and matched challenge
     let assessment = db.prepare(`
       SELECT * FROM assessments 
-      WHERE builder_id = ? AND challenge_id = ? AND status = 'IN_PROGRESS' 
+      WHERE builder_id = ? AND challenge_id = ?
       ORDER BY id DESC LIMIT 1
     `).get(builderIdNum, matchedChallenge.id);
 
     const now = new Date().toISOString();
 
-    if (!assessment) {
+    if (!assessment || assessment.status === 'COMPLETED') {
       const insertAss = db.prepare(`
         INSERT INTO assessments (challenge_id, builder_id, status, started_at)
         VALUES (?, ?, 'IN_PROGRESS', ?)
       `).run(matchedChallenge.id, builderIdNum, now);
 
       const assessmentId = insertAss.lastInsertRowid;
-      assessment = { id: assessmentId, challenge_id: matchedChallenge.id, builder_id: builderIdNum, status: 'IN_PROGRESS' };
-
-      // Seed tailored questions for this assessment based on extracted resume skills
-      seedQuestionsForAssessment(assessmentId, matchedChallenge.id, extraction.skills);
+      assessment = { id: assessmentId, challenge_id: matchedChallenge.id, builder_id: builderIdNum, status: 'IN_PROGRESS', score: null };
     } else {
-      // Ensure questions exist tailored to skills
-      seedQuestionsForAssessment(assessment.id, matchedChallenge.id, extraction.skills);
+      // If it exists, ensure status is IN_PROGRESS and clean previous answers/score
+      db.prepare(`
+        UPDATE assessments SET status = 'IN_PROGRESS', score = NULL, skill_scores = NULL WHERE id = ?
+      `).run(assessment.id);
     }
+
+    // Force seed fresh questions tailored to the candidate's exact extracted resume skills (Intermediate/Medium level)
+    seedQuestionsForAssessment(assessment.id, matchedChallenge.id, extraction.skills, true);
 
     // 4. Save resume entry
     const insertResume = db.prepare(`

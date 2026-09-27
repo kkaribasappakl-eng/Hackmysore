@@ -106,39 +106,6 @@ export default function ResumeUpload() {
         </p>
       </div>
 
-      {/* SAMPLE RESUME SELECTORS */}
-      {samples.length > 0 && (
-        <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-800">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            <span>Instant Demo Options (Click to load sample candidate profile)</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {samples.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => handleUseSample(s)}
-                className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                  filename === s.filename
-                    ? 'bg-blue-950/50 border-blue-500 text-white shadow-md shadow-blue-500/10'
-                    : 'bg-slate-950/50 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
-                }`}
-              >
-                <div className="font-semibold text-sm text-white mb-1 flex items-center justify-between">
-                  <span>{s.title}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-blue-400">
-                    {s.domain}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 line-clamp-2 font-mono">
-                  {s.sampleText.slice(0, 140)}...
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* UPLOAD FORM */}
       <form onSubmit={handleExtractAndMatch} className="bg-slate-900/80 p-6 sm:p-8 rounded-2xl border border-slate-800 shadow-xl space-y-6">

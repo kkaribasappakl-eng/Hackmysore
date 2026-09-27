@@ -42,58 +42,102 @@ export default function ReviewSubmission() {
       const res = await getSubmission(subId);
       if (res.success && res.data) {
         const s = res.data;
+        const assScore = s.assessment?.score !== undefined && s.assessment?.score !== null ? s.assessment.score : 0;
+        const isZeroScore = assScore === 0;
+
         const aiData = s.ai_advisory_rubric || s.ai_analysis || {};
         const antiGaming = s.anti_gaming_report || {};
-        const similarity = s.similarity_score !== null && s.similarity_score !== undefined ? s.similarity_score : 8;
-        const originality = antiGaming.originality_score !== undefined ? antiGaming.originality_score : (100 - similarity);
+        const similarity = isZeroScore ? 0 : (s.similarity_score !== null && s.similarity_score !== undefined ? s.similarity_score : 8);
+        const originality = isZeroScore ? 0 : (antiGaming.originality_score !== undefined ? antiGaming.originality_score : (100 - similarity));
+
+        const effectiveAiScore = isZeroScore
+          ? 0
+          : (aiData.overall_suggested_score !== undefined ? aiData.overall_suggested_score : (aiData.advisoryScore || 86));
+
+        const effectiveIntegrity = isZeroScore
+          ? "Flagged (0% Score / Incomplete)"
+          : (s.integrity_status === 'PASSED' ? `Pass (${originality}% Originality)` : (s.integrity_status || `Pass (${originality}% Originality)`));
+
+        if (isZeroScore) {
+          setRubrics({
+            correctness: 1.0,
+            architecture: 1.0,
+            codeQuality: 1.0,
+            tradeOffs: 1.0
+          });
+          setRecommendation("REJECTED");
+          setFeedback("Candidate did not submit valid technical solutions for assessment tasks (Assessment Score: 0/100). Technical competency threshold not met.");
+          setStrengths("None recorded for incomplete/zero-score submission.");
+          setWeaknesses("All assessment questions were left blank or did not provide working code/reasoning.");
+        }
 
         setSubmission({
           id: s.id,
           submission_id: s.id,
           assessment_id: s.assessment_id,
           builder_id: s.builder_id,
+          isZeroScore: isZeroScore,
           candidateName: s.builder?.name || "Candidate",
           challengeTitle: s.challenge?.title || "Practical Engineering Challenge",
-          assessmentScore: s.assessment?.score !== undefined && s.assessment?.score !== null ? s.assessment.score : 0,
+          assessmentScore: assScore,
           skillScores: s.assessment?.skill_scores ? (typeof s.assessment.skill_scores === 'string' ? JSON.parse(s.assessment.skill_scores) : s.assessment.skill_scores) : {},
           candidateAnswers: s.assessment_answers || s.assessment?.answers || [],
-          aiPreScore: aiData.overall_suggested_score || aiData.advisoryScore || 86,
-          integrityStatus: s.integrity_status === 'PASSED' ? `Pass (${originality}% Originality)` : (s.integrity_status || `Pass (${originality}% Originality)`),
+          aiPreScore: effectiveAiScore,
+          integrityStatus: effectiveIntegrity,
           similarityScore: similarity,
           originalityScore: originality,
           repoUrl: s.repository_url || "",
           demoUrl: s.project_url || "",
           antiGamingReport: antiGaming,
           adr: s.adr_content ? {
-            whatBuilt: s.adr_content.what || s.adr_content.whatBuilt || "Architecture Record Submitted",
-            whyApproach: s.adr_content.why || s.adr_content.whyApproach || "",
-            alternatives: s.adr_content.alternatives || "",
-            tradeOffs: s.adr_content.tradeoffs || s.adr_content.tradeOffs || "",
-            scalePlan: s.adr_content.scaling || s.adr_content.scalePlan || ""
+            whatBuilt: s.adr_content.what || s.adr_content.whatBuilt || (isZeroScore ? "No technical solutions submitted (0/100)." : "Architecture Record Submitted"),
+            whyApproach: s.adr_content.why || s.adr_content.whyApproach || (isZeroScore ? "No implementation decisions documented." : ""),
+            alternatives: s.adr_content.alternatives || (isZeroScore ? "None considered." : ""),
+            tradeOffs: s.adr_content.tradeoffs || s.adr_content.tradeOffs || (isZeroScore ? "None documented." : ""),
+            scalePlan: s.adr_content.scaling || s.adr_content.scalePlan || (isZeroScore ? "None documented." : "")
           } : null,
           aiAnalysis: {
-            summary: aiData.summary || s.ai_summary || "High code modularity with well-structured controllers and service layers.",
-            testCoverage: aiData.testCoverage || "Automated test coverage verified across submitted services.",
-            flaggedItems: antiGaming.suspicious_patterns_found > 0 ? "Flags detected" : "None. No known boilerplate copy-paste patterns detected.",
-            advisoryScore: aiData.overall_suggested_score || aiData.advisoryScore || 86,
-            adrConsistency: s.adr_consistency_score || aiData.adr_consistency || 88,
-            reasoningQuality: s.reasoning_quality_score || aiData.reasoning_quality || 84,
-            suggested_rubrics: aiData.suggested_rubrics || {
+            summary: isZeroScore
+              ? "Candidate submitted 0 valid technical answers. Assessment scored 0/100."
+              : (aiData.summary || s.ai_summary || "High code modularity with well-structured controllers and service layers."),
+            testCoverage: isZeroScore
+              ? "0 automated tests passed. No test coverage recorded."
+              : (aiData.testCoverage || "Automated test coverage verified across submitted services."),
+            flaggedItems: isZeroScore
+              ? "Flags detected: Incomplete assessment with 0 valid answers."
+              : (antiGaming.suspicious_patterns_found > 0 ? "Flags detected" : "None. No known boilerplate copy-paste patterns detected."),
+            advisoryScore: effectiveAiScore,
+            adrConsistency: isZeroScore ? 0 : (s.adr_consistency_score || aiData.adr_consistency || 88),
+            reasoningQuality: isZeroScore ? 0 : (s.reasoning_quality_score || aiData.reasoning_quality || 84),
+            suggested_rubrics: isZeroScore ? {
+              correctness: 1.0,
+              architecture: 1.0,
+              code_quality: 1.0,
+              tradeoff_awareness: 1.0
+            } : (aiData.suggested_rubrics || {
               correctness: 4.5,
               architecture: 4.2,
               code_quality: 4.0,
               tradeoff_awareness: 4.5
-            },
-            detected_strengths: aiData.detected_strengths || [
-              "Clean modular architecture with well-defined separation of concerns.",
-              "Deterministic database row-level locking prevents thread race conditions.",
-              "Well-reasoned trade-off defense in Architecture Decision Record."
-            ],
-            detected_weaknesses: aiData.detected_weaknesses || [
-              "Recommend adding explicit dead-letter queue handling for asynchronous event pipelines."
-            ],
-            adr_critique: aiData.adr_critique || "ADR clearly explains system design choices and trade-offs.",
-            anti_gaming_observations: aiData.anti_gaming_observations || "Original engineering reasoning with no superficial prompt artifacts.",
+            }),
+            detected_strengths: isZeroScore
+              ? []
+              : (aiData.detected_strengths || [
+                "Clean modular architecture with well-defined separation of concerns.",
+                "Deterministic database row-level locking prevents thread race conditions.",
+                "Well-reasoned trade-off defense in Architecture Decision Record."
+              ]),
+            detected_weaknesses: isZeroScore
+              ? ["Candidate submitted 0 valid code solutions for assessment tasks."]
+              : (aiData.detected_weaknesses || [
+                "Recommend adding explicit dead-letter queue handling for asynchronous event pipelines."
+              ]),
+            adr_critique: isZeroScore
+              ? "No technical trade-off decisions documented."
+              : (aiData.adr_critique || "ADR clearly explains system design choices and trade-offs."),
+            anti_gaming_observations: isZeroScore
+              ? "Zero technical solutions provided."
+              : (aiData.anti_gaming_observations || "Original engineering reasoning with no superficial prompt artifacts."),
             provider: aiData.provider || "claude-3-5-sonnet (reference)",
             notice: "AI Reference Only"
           }
@@ -132,6 +176,19 @@ export default function ReviewSubmission() {
   }, [submissionId]);
 
   const handlePrefillFromAI = () => {
+    if (submission?.isZeroScore) {
+      setRubrics({
+        correctness: 1.0,
+        architecture: 1.0,
+        codeQuality: 1.0,
+        tradeOffs: 1.0
+      });
+      setStrengths("None recorded for incomplete/zero-score submission.");
+      setWeaknesses("All assessment questions were left blank or scored 0/100.");
+      setRecommendation("REJECTED");
+      setToastMessage("Prefilled minimum rubrics (1.0) and REJECTED recommendation for 0-score submission.");
+      return;
+    }
     if (submission?.aiAnalysis?.suggested_rubrics) {
       const sr = submission.aiAnalysis.suggested_rubrics;
       setRubrics({
@@ -295,8 +352,12 @@ export default function ReviewSubmission() {
             <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30">
               Technical Verification Mode
             </span>
-            <span className="text-xs font-mono text-emerald-400 flex items-center gap-1">
-              <span>✓</span> {submission.integrityStatus}
+            <span className={`text-xs font-mono flex items-center gap-1 ${
+              submission.isZeroScore || submission.integrityStatus?.includes('Flag') || submission.integrityStatus?.includes('FLAG')
+                ? 'text-rose-400'
+                : 'text-emerald-400'
+            }`}>
+              <span>{submission.isZeroScore || submission.integrityStatus?.includes('Flag') || submission.integrityStatus?.includes('FLAG') ? '⚠' : '✓'}</span> {submission.integrityStatus}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-2">
@@ -334,26 +395,26 @@ export default function ReviewSubmission() {
         {/* Assessment Score & AI Advisory Pre-score Pills */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-center md:text-right min-w-[150px]">
-            <span className="text-[11px] font-mono text-emerald-400 uppercase tracking-wider block">
+            <span className={`text-[11px] font-mono uppercase tracking-wider block ${submission.isZeroScore ? 'text-rose-400' : 'text-emerald-400'}`}>
               Assessment Score
             </span>
-            <div className="text-3xl font-extrabold text-emerald-400 font-mono mt-0.5">
+            <div className={`text-3xl font-extrabold font-mono mt-0.5 ${submission.isZeroScore ? 'text-rose-400' : 'text-emerald-400'}`}>
               {submission.assessmentScore} <span className="text-xs text-slate-500 font-normal">/ 100</span>
             </div>
             <span className="text-[10px] text-slate-400 block mt-1">
-              Verified Technical Engine
+              {submission.isZeroScore ? 'Incomplete / 0 Answers' : 'Verified Technical Engine'}
             </span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-center md:text-right min-w-[150px]">
-            <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">
+            <span className={`text-[11px] font-mono uppercase tracking-wider block ${submission.isZeroScore ? 'text-rose-400' : 'text-blue-400'}`}>
               AI Advisory Pre-score
             </span>
-            <div className="text-3xl font-extrabold text-blue-400 font-mono mt-0.5">
+            <div className={`text-3xl font-extrabold font-mono mt-0.5 ${submission.isZeroScore ? 'text-rose-400' : 'text-blue-400'}`}>
               {submission.aiPreScore} <span className="text-xs text-slate-500 font-normal">/ 100</span>
             </div>
             <span className="text-[10px] text-slate-400 block mt-1">
-              Structural & Test Scan Only
+              {submission.isZeroScore ? 'No Submissions To Scan' : 'Structural & Test Scan Only'}
             </span>
           </div>
         </div>
@@ -438,35 +499,37 @@ export default function ReviewSubmission() {
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-200">Anti-Gaming & Originality Verification:</span>
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
-                  submission.antiGamingReport?.status === 'FLAGGED'
+                  submission.isZeroScore || submission.antiGamingReport?.status === 'FLAGGED'
                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                     : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 }`}>
-                  {submission.antiGamingReport?.status || 'PASSED'}
+                  {submission.isZeroScore ? 'FLAGGED' : (submission.antiGamingReport?.status || 'PASSED')}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center pt-1">
                 <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Originality</span>
-                  <span className="text-sm font-bold font-mono text-emerald-400">
-                    {submission.originalityScore || 92}%
+                  <span className={`text-sm font-bold font-mono ${submission.isZeroScore ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {submission.isZeroScore ? 0 : (submission.originalityScore !== undefined ? submission.originalityScore : 92)}%
                   </span>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">ADR Consistency</span>
-                  <span className="text-sm font-bold font-mono text-blue-400">
-                    {submission.aiAnalysis?.adrConsistency || 88}%
+                  <span className={`text-sm font-bold font-mono ${submission.isZeroScore ? 'text-rose-400' : 'text-blue-400'}`}>
+                    {submission.isZeroScore ? 0 : (submission.aiAnalysis?.adrConsistency !== undefined ? submission.aiAnalysis.adrConsistency : 88)}%
                   </span>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Reasoning Quality</span>
-                  <span className="text-sm font-bold font-mono text-purple-400">
-                    {submission.aiAnalysis?.reasoningQuality || 84}%
+                  <span className={`text-sm font-bold font-mono ${submission.isZeroScore ? 'text-rose-400' : 'text-purple-400'}`}>
+                    {submission.isZeroScore ? 0 : (submission.aiAnalysis?.reasoningQuality !== undefined ? submission.aiAnalysis.reasoningQuality : 84)}%
                   </span>
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
-                {submission.antiGamingReport?.message || "Originality verified. No significant boilerplate or prompt-stuffing detected."}
+                {submission.isZeroScore
+                  ? "Assessment incomplete or zero answers submitted. No technical evidence detected for analysis."
+                  : (submission.antiGamingReport?.message || "Originality verified. No significant boilerplate or prompt-stuffing detected.")}
               </p>
             </div>
 
@@ -486,25 +549,25 @@ export default function ReviewSubmission() {
                 <div className="p-2 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Correctness</span>
                   <span className="font-mono font-bold text-slate-200">
-                    {submission.aiAnalysis?.suggested_rubrics?.correctness || 4.5} / 5
+                    {submission.isZeroScore ? "1.0" : (submission.aiAnalysis?.suggested_rubrics?.correctness || 4.5)} / 5
                   </span>
                 </div>
                 <div className="p-2 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Architecture</span>
                   <span className="font-mono font-bold text-slate-200">
-                    {submission.aiAnalysis?.suggested_rubrics?.architecture || 4.2} / 5
+                    {submission.isZeroScore ? "1.0" : (submission.aiAnalysis?.suggested_rubrics?.architecture || 4.2)} / 5
                   </span>
                 </div>
                 <div className="p-2 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Code Quality</span>
                   <span className="font-mono font-bold text-slate-200">
-                    {submission.aiAnalysis?.suggested_rubrics?.code_quality || 4.0} / 5
+                    {submission.isZeroScore ? "1.0" : (submission.aiAnalysis?.suggested_rubrics?.code_quality || 4.0)} / 5
                   </span>
                 </div>
                 <div className="p-2 rounded bg-slate-900 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block">Trade-offs</span>
                   <span className="font-mono font-bold text-slate-200">
-                    {submission.aiAnalysis?.suggested_rubrics?.tradeoff_awareness || 4.5} / 5
+                    {submission.isZeroScore ? "1.0" : (submission.aiAnalysis?.suggested_rubrics?.tradeoff_awareness || 4.5)} / 5
                   </span>
                 </div>
               </div>
@@ -515,12 +578,12 @@ export default function ReviewSubmission() {
               <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/20 space-y-1.5">
                 <span className="font-semibold text-emerald-400 block text-[11px]">AI Detected Strengths:</span>
                 <ul className="space-y-1 text-[11px] text-slate-300">
-                  {(submission.aiAnalysis?.detected_strengths || [
+                  {((submission.isZeroScore ? ["No technical strengths identified (0/100 assessment score)."] : submission.aiAnalysis?.detected_strengths) || [
                     "Clean modular architecture with well-defined separation of concerns.",
                     "Deterministic database row-level locking prevents thread contention."
                   ]).map((item, idx) => (
                     <li key={idx} className="flex items-start gap-1.5">
-                      <span className="text-emerald-400 font-bold">✓</span>
+                      <span className={`${submission.isZeroScore ? 'text-slate-500' : 'text-emerald-400'} font-bold`}>{submission.isZeroScore ? '•' : '✓'}</span>
                       <span>{item}</span>
                     </li>
                   ))}
@@ -529,7 +592,7 @@ export default function ReviewSubmission() {
               <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/20 space-y-1.5">
                 <span className="font-semibold text-amber-400 block text-[11px]">AI Identified Trade-offs / Risks:</span>
                 <ul className="space-y-1 text-[11px] text-slate-300">
-                  {(submission.aiAnalysis?.detected_weaknesses || [
+                  {((submission.isZeroScore ? ["Candidate did not submit valid technical solutions for assessment questions."] : submission.aiAnalysis?.detected_weaknesses) || [
                     "Consider connection pool saturation benchmarks under burst flash-sale load.",
                     "Recommend adding explicit dead-letter queue handling for asynchronous events."
                   ]).map((item, idx) => (

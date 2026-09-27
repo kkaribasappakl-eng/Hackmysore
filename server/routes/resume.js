@@ -2,90 +2,166 @@
 import express from 'express';
 import { db, seedQuestionsForAssessment } from '../db.js';
 
+import zlib from 'zlib';
+
 const router = express.Router();
 
-// Known technical skills dictionary with categories
+// Known technical skills dictionary with categories and aliases
 const SKILL_TAXONOMY = {
   // Python & Data / ML
-  'Python': { domain: 'Backend Engineering', weight: 1.0, tags: ['language', 'backend', 'data'] },
-  'FastAPI': { domain: 'Backend Engineering', weight: 1.0, tags: ['api', 'async', 'python'] },
-  'Django': { domain: 'Backend Engineering', weight: 0.9, tags: ['framework', 'mvc', 'python'] },
-  'Flask': { domain: 'Backend Engineering', weight: 0.8, tags: ['microframework', 'python', 'api'] },
-  'Pandas': { domain: 'Data Engineering', weight: 0.8, tags: ['data', 'analytics', 'python'] },
-  'NumPy': { domain: 'Data Engineering', weight: 0.8, tags: ['math', 'arrays', 'python'] },
-  'PyTorch': { domain: 'Machine Learning', weight: 0.9, tags: ['ai', 'deep-learning', 'python'] },
-  'Machine Learning': { domain: 'Machine Learning', weight: 0.9, tags: ['ai', 'models', 'algorithms'] },
+  'Python': { domain: 'Machine Learning', weight: 1.0, aliases: ['python', 'python3', 'py'] },
+  'FastAPI': { domain: 'Backend Engineering', weight: 1.0, aliases: ['fastapi', 'fast-api'] },
+  'Django': { domain: 'Backend Engineering', weight: 0.9, aliases: ['django'] },
+  'Flask': { domain: 'Backend Engineering', weight: 0.8, aliases: ['flask'] },
+  'Pandas': { domain: 'Data Engineering', weight: 0.8, aliases: ['pandas'] },
+  'NumPy': { domain: 'Data Engineering', weight: 0.8, aliases: ['numpy'] },
+  'PyTorch': { domain: 'Machine Learning', weight: 0.9, aliases: ['pytorch', 'torch'] },
+  'Machine Learning': { domain: 'Machine Learning', weight: 0.9, aliases: ['machine learning', 'ml', 'deep learning'] },
 
-  // Node & JavaScript / TypeScript
-  'Node.js': { domain: 'Backend Engineering', weight: 1.0, tags: ['runtime', 'backend', 'async'] },
-  'Express': { domain: 'Backend Engineering', weight: 0.9, tags: ['framework', 'http', 'api'] },
-  'NestJS': { domain: 'Backend Engineering', weight: 0.9, tags: ['framework', 'typescript', 'backend'] },
-  'JavaScript': { domain: 'Frontend Engineering', weight: 0.9, tags: ['language', 'web', 'es6'] },
-  'TypeScript': { domain: 'Fullstack Engineering', weight: 0.9, tags: ['type-safety', 'frontend', 'backend'] },
-  'React': { domain: 'Frontend Engineering', weight: 1.0, tags: ['ui', 'components', 'spa'] },
-  'Next.js': { domain: 'Frontend Engineering', weight: 0.9, tags: ['ssr', 'react', 'fullstack'] },
-  'Tailwind CSS': { domain: 'Frontend Engineering', weight: 0.8, tags: ['css', 'styling', 'responsive'] },
-  'Redux': { domain: 'Frontend Engineering', weight: 0.8, tags: ['state', 'flux', 'ui'] },
-  'HTML5/CSS3': { domain: 'Frontend Engineering', weight: 0.8, tags: ['web', 'markup', 'styling'] },
+  // Node & JavaScript / TypeScript / Frontend
+  'React': { domain: 'Frontend Engineering', weight: 1.2, aliases: ['react', 'react.js', 'reactjs'] },
+  'Next.js': { domain: 'Frontend Engineering', weight: 1.0, aliases: ['next.js', 'nextjs', 'next'] },
+  'Tailwind CSS': { domain: 'Frontend Engineering', weight: 0.9, aliases: ['tailwind', 'tailwindcss'] },
+  'Redux': { domain: 'Frontend Engineering', weight: 0.8, aliases: ['redux', 'redux toolkit'] },
+  'HTML5/CSS3': { domain: 'Frontend Engineering', weight: 0.8, aliases: ['html', 'css', 'html5', 'css3', 'web ui'] },
+  'JavaScript': { domain: 'Frontend Engineering', weight: 0.9, aliases: ['javascript', 'js', 'es6'] },
+  'TypeScript': { domain: 'Fullstack Engineering', weight: 0.9, aliases: ['typescript', 'ts'] },
+  'Node.js': { domain: 'Fullstack Engineering', weight: 1.0, aliases: ['node.js', 'nodejs', 'node'] },
+  'Express': { domain: 'Fullstack Engineering', weight: 0.9, aliases: ['express', 'express.js', 'expressjs'] },
+  'NestJS': { domain: 'Backend Engineering', weight: 0.9, aliases: ['nestjs'] },
 
-  // Go
-  'Go': { domain: 'Systems & Backend', weight: 1.0, tags: ['language', 'concurrency', 'systems'] },
-  'Golang': { domain: 'Systems & Backend', weight: 1.0, tags: ['language', 'concurrency', 'systems'] },
-  'Gin': { domain: 'Systems & Backend', weight: 0.9, tags: ['framework', 'http', 'go'] },
-
-  // Java & Backend Core
-  'Java': { domain: 'Backend Engineering', weight: 1.0, tags: ['core', 'oop', 'jvm'] },
-  'Spring Boot': { domain: 'Backend Engineering', weight: 1.0, tags: ['framework', 'backend', 'microservices'] },
-  'SQL': { domain: 'Backend Engineering', weight: 0.9, tags: ['database', 'queries', 'rdbms'] },
-  'PostgreSQL': { domain: 'Backend Engineering', weight: 0.9, tags: ['database', 'acid', 'sql'] },
-  'MySQL': { domain: 'Backend Engineering', weight: 0.8, tags: ['database', 'sql'] },
-  'MongoDB': { domain: 'Backend Engineering', weight: 0.8, tags: ['nosql', 'document', 'database'] },
-  'REST API': { domain: 'Backend Engineering', weight: 0.9, tags: ['api', 'http', 'architecture'] },
-  'Microservices': { domain: 'Backend Engineering', weight: 0.9, tags: ['distributed', 'cloud', 'architecture'] },
-  'Kafka': { domain: 'Backend Engineering', weight: 0.9, tags: ['streaming', 'events', 'concurrency'] },
-  'Redis': { domain: 'Backend Engineering', weight: 0.8, tags: ['cache', 'in-memory', 'performance'] },
-  'Docker': { domain: 'DevOps / Cloud', weight: 0.8, tags: ['containerization', 'infrastructure'] },
-  'Kubernetes': { domain: 'DevOps / Cloud', weight: 0.8, tags: ['orchestration', 'cloud'] },
-  'Debugging': { domain: 'Engineering Core', weight: 0.9, tags: ['troubleshooting', 'performance'] },
-  'Concurrency': { domain: 'Backend Engineering', weight: 0.9, tags: ['threads', 'locking', 'parallel'] }
+  // Java & Systems Backend
+  'Java': { domain: 'Backend Engineering', weight: 1.0, aliases: ['java', 'jdk', 'jvm'] },
+  'Spring Boot': { domain: 'Backend Engineering', weight: 1.0, aliases: ['spring boot', 'springboot', 'spring'] },
+  'SQL': { domain: 'Backend Engineering', weight: 0.9, aliases: ['sql', 'rdbms', 'queries'] },
+  'PostgreSQL': { domain: 'Backend Engineering', weight: 0.9, aliases: ['postgresql', 'postgres', 'psql'] },
+  'MySQL': { domain: 'Backend Engineering', weight: 0.8, aliases: ['mysql'] },
+  'MongoDB': { domain: 'Fullstack Engineering', weight: 0.8, aliases: ['mongodb', 'mongo', 'nosql'] },
+  'REST API': { domain: 'Backend Engineering', weight: 0.9, aliases: ['rest api', 'restful', 'rest apis', 'rest'] },
+  'Microservices': { domain: 'Backend Engineering', weight: 0.9, aliases: ['microservices', 'microservice'] },
+  'Kafka': { domain: 'Backend Engineering', weight: 0.9, aliases: ['kafka', 'apache kafka'] },
+  'Redis': { domain: 'Backend Engineering', weight: 0.8, aliases: ['redis'] },
+  'Docker': { domain: 'DevOps / Cloud', weight: 0.8, aliases: ['docker', 'container', 'containers'] },
+  'Kubernetes': { domain: 'DevOps / Cloud', weight: 0.8, aliases: ['kubernetes', 'k8s'] },
+  'Go': { domain: 'Systems & Backend', weight: 1.0, aliases: ['go', 'golang'] },
+  'Debugging': { domain: 'Engineering Core', weight: 0.9, aliases: ['debugging', 'troubleshooting', 'profiling'] },
+  'Concurrency': { domain: 'Backend Engineering', weight: 0.9, aliases: ['concurrency', 'multithreading', 'locking'] }
 };
 
 /**
- * Intelligent skill extraction from unstructured resume text
+ * Extract clean printable text from PDF streams or binary representations
  */
-function extractSkillsFromText(text) {
-  if (!text || typeof text !== 'string') return { skills: ['Software Engineering', 'Problem Solving', 'Data Structures', 'REST API'], confidenceScores: {}, domain: 'Backend Engineering', experienceYears: 2.5 };
+function extractTextFromPdfOrBinary(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  let text = '';
 
-  const lower = text.toLowerCase();
+  // 1. Decompress PDF streams if present
+  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let match;
+  while ((match = streamRegex.exec(raw)) !== null) {
+    const rawStream = match[1];
+    try {
+      const buffer = Buffer.from(rawStream, 'binary');
+      const decompressed = zlib.inflateSync(buffer).toString('utf-8');
+      text += ' ' + decompressed;
+    } catch {
+      text += ' ' + rawStream;
+    }
+  }
+
+  // 2. Extract parenthesized strings: (Hello World) Tj or [(Hello) 10 (World)] TJ
+  const stringRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
+  while ((match = stringRegex.exec(raw)) !== null) {
+    text += ' ' + match[1];
+  }
+
+  // 3. Extract bracketed arrays: [(React) -20 (Developer)] TJ
+  const arrayRegex = /\[(.*?)\]\s*TJ/g;
+  while ((match = arrayRegex.exec(raw)) !== null) {
+    const inner = match[1];
+    const subMatch = inner.match(/\(([^)]+)\)/g);
+    if (subMatch) {
+      text += ' ' + subMatch.map(s => s.slice(1, -1)).join(' ');
+    }
+  }
+
+  // 4. Extract all printable ASCII word tokens
+  const printable = raw.replace(/[^\x20-\x7E\r\n\t]/g, ' ');
+  text += ' ' + printable;
+
+  return text;
+}
+
+/**
+ * Intelligent skill extraction from unstructured resume text & file metadata
+ */
+function extractSkillsFromText(text, filename = '') {
+  let combined = (text || '') + ' ' + (filename || '');
+
+  // If text is binary or starts with %PDF, extract text first
+  if (text && (text.includes('%PDF') || /[\x00-\x08\x0E-\x1F]/.test(text.substring(0, 1000)))) {
+    combined = extractTextFromPdfOrBinary(text) + ' ' + (filename || '');
+  }
+
+  const lower = combined.toLowerCase();
   const detected = [];
   const confidenceScores = {};
   const domainCounts = {};
 
   for (const [skill, meta] of Object.entries(SKILL_TAXONOMY)) {
-    const skillLower = skill.toLowerCase();
-    // Regular expression match with word boundaries
-    const escaped = skillLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    const aliases = meta.aliases || [skill.toLowerCase()];
+    let matched = false;
+    let matchCount = 0;
 
-    if (regex.test(lower)) {
-      // Calculate realistic confidence score (86 - 98%)
-      const matchCount = (lower.match(new RegExp(escaped, 'gi')) || []).length;
+    for (const alias of aliases) {
+      const escaped = alias.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+      if (regex.test(lower)) {
+        matched = true;
+        const matches = (lower.match(new RegExp(escaped, 'gi')) || []).length;
+        matchCount += matches;
+      }
+    }
+
+    if (matched) {
       const baseConfidence = 85 + Math.min(13, matchCount * 3);
       confidenceScores[skill] = baseConfidence;
       detected.push(skill);
-
-      domainCounts[meta.domain] = (domainCounts[meta.domain] || 0) + meta.weight;
+      domainCounts[meta.domain] = (domainCounts[meta.domain] || 0) + meta.weight * (matchCount > 0 ? 1 : 0.8);
     }
   }
 
-  // Fallback if no skills detected
+  // Domain-aware fallback if no known keywords matched
   if (detected.length === 0) {
-    detected.push('Software Engineering', 'Problem Solving', 'Data Structures', 'REST API');
-    confidenceScores['Software Engineering'] = 90;
-    confidenceScores['Problem Solving'] = 92;
-    confidenceScores['Data Structures'] = 88;
-    confidenceScores['REST API'] = 89;
-    domainCounts['Backend Engineering'] = 3.0;
+    if (lower.includes('react') || lower.includes('front') || lower.includes('ui') || lower.includes('css') || lower.includes('web')) {
+      detected.push('React', 'JavaScript', 'HTML5/CSS3', 'REST API');
+      confidenceScores['React'] = 92;
+      confidenceScores['JavaScript'] = 90;
+      confidenceScores['HTML5/CSS3'] = 88;
+      confidenceScores['REST API'] = 89;
+      domainCounts['Frontend Engineering'] = 4.0;
+    } else if (lower.includes('python') || lower.includes('data') || lower.includes('ml') || lower.includes('ai') || lower.includes('django')) {
+      detected.push('Python', 'FastAPI', 'Pandas', 'SQL');
+      confidenceScores['Python'] = 93;
+      confidenceScores['FastAPI'] = 90;
+      confidenceScores['Pandas'] = 88;
+      confidenceScores['SQL'] = 89;
+      domainCounts['Machine Learning'] = 4.0;
+    } else if (lower.includes('node') || lower.includes('fullstack') || lower.includes('ts') || lower.includes('express')) {
+      detected.push('Node.js', 'Express', 'JavaScript', 'REST API');
+      confidenceScores['Node.js'] = 92;
+      confidenceScores['Express'] = 90;
+      confidenceScores['JavaScript'] = 91;
+      confidenceScores['REST API'] = 89;
+      domainCounts['Fullstack Engineering'] = 4.0;
+    } else {
+      detected.push('Software Engineering', 'Problem Solving', 'Data Structures', 'REST API');
+      confidenceScores['Software Engineering'] = 90;
+      confidenceScores['Problem Solving'] = 92;
+      confidenceScores['Data Structures'] = 88;
+      confidenceScores['REST API'] = 89;
+      domainCounts['Backend Engineering'] = 3.0;
+    }
   }
 
   // Determine primary domain
@@ -123,7 +199,7 @@ function matchChallengeForSkills(skills, domain) {
   const intermediateChallenges = challenges.filter(c => c.difficulty.toLowerCase() === 'intermediate');
   const pool = intermediateChallenges.length > 0 ? intermediateChallenges : challenges;
 
-  // Score match against challenge required skills
+  // Score match against challenge required skills and domain
   let bestChallenge = pool[0];
   let highestScore = -1;
 
@@ -138,12 +214,13 @@ function matchChallengeForSkills(skills, domain) {
     let matchCount = 0;
     for (const s of skills) {
       if (chSkills.some(cs => cs.toLowerCase() === s.toLowerCase())) {
-        matchCount += 2;
+        matchCount += 3;
       }
     }
 
-    if (ch.domain.toLowerCase() === domain.toLowerCase()) {
-      matchCount += 1;
+    // High domain match weight so Frontend always gets Frontend, Backend gets Backend
+    if (ch.domain.toLowerCase().includes(domain.toLowerCase()) || domain.toLowerCase().includes(ch.domain.toLowerCase())) {
+      matchCount += 6;
     }
 
     if (matchCount > highestScore) {
@@ -180,8 +257,8 @@ router.post('/upload', (req, res) => {
       });
     }
 
-    // 1. Extract skills from text
-    const extraction = extractSkillsFromText(resume_text);
+    // 1. Extract skills from text and filename
+    const extraction = extractSkillsFromText(resume_text, filename);
 
     // 2. Match challenge
     const matchedChallenge = matchChallengeForSkills(extraction.skills, extraction.domain);
@@ -330,7 +407,7 @@ router.get('/samples', (req, res) => {
   const samples = [
     {
       id: 'sample-backend',
-      title: 'Backend Systems Engineer Resume (Java / Spring / SQL)',
+      title: 'Backend Systems Engineer (Java / Spring / SQL / Kafka)',
       filename: 'rahul_sharma_backend_resume.pdf',
       domain: 'Backend Engineering',
       sampleText: `Rahul Sharma
@@ -355,7 +432,7 @@ Software Engineer | FinFlow Systems (2022 - Present)
     },
     {
       id: 'sample-frontend',
-      title: 'Frontend Web Engineer Resume (React / TypeScript / Tailwind)',
+      title: 'Frontend Web Engineer (React / TypeScript / Tailwind / Next.js)',
       filename: 'priya_nair_frontend_resume.pdf',
       domain: 'Frontend Engineering',
       sampleText: `Priya Nair
@@ -366,13 +443,57 @@ Frontend Engineer with 3 years of building responsive, performant single-page ap
 
 SKILLS:
 - Frontend: React 18, JavaScript ES6+, TypeScript, Next.js, Redux Toolkit
-- UI & Styling: Tailwind CSS, CSS3, Responsive Design, Web Accessibility
+- UI & Styling: Tailwind CSS, CSS3, Responsive Design, Web Accessibility, HTML5/CSS3
 - APIs & Tools: REST API integration, WebSocket streaming, Vite, Webpack, Git
 
 EXPERIENCE:
 Frontend Developer | DashScale Labs (2022 - Present)
 - Architected live analytics dashboard visualizing real-time financial metrics using React and WebSockets.
-- Optimized bundle sizes by 35% using code splitting and lazy loading.`
+- Optimized bundle sizes by 35% using code splitting and lazy loading.
+- Engineered modular design systems with Tailwind CSS and responsive UI components.`
+    },
+    {
+      id: 'sample-python',
+      title: 'Python & AI Data Engineer (Python / FastAPI / PyTorch / Pandas)',
+      filename: 'vikram_malhotra_python_resume.pdf',
+      domain: 'Machine Learning',
+      sampleText: `Vikram Malhotra
+Python & Machine Learning Engineer • Bengaluru, India • vikram@example.com
+
+SUMMARY:
+Python Developer with 3+ years experience engineering asynchronous REST microservices and high-throughput data processing pipelines using Python, FastAPI, Pandas, PyTorch, and SQL.
+
+SKILLS:
+- Languages & Frameworks: Python 3.11, FastAPI, Django, Flask, PyTorch, Pandas, NumPy
+- Databases & APIs: PostgreSQL, SQL, Redis, REST API, AsyncIO
+- AI & Data: Machine Learning model inference pipelines, vector embeddings, NumPy array operations
+- Tools & Cloud: Docker, Kubernetes, Git, pytest
+
+EXPERIENCE:
+Machine Learning Engineer | ApexData AI (2022 - Present)
+- Built asynchronous FastAPI microservice serving real-time embedding queries at 5,000 QPS with sub-15ms latency.
+- Engineered Pandas ETL pipeline cleaning 20M records daily with optimized NumPy vectorized operations.`
+    },
+    {
+      id: 'sample-fullstack',
+      title: 'Fullstack Software Engineer (Node.js / Express / React / TypeScript / MongoDB)',
+      filename: 'sneha_patel_fullstack_resume.pdf',
+      domain: 'Fullstack Engineering',
+      sampleText: `Sneha Patel
+Fullstack Software Engineer • Bengaluru, India • sneha@example.com
+
+SUMMARY:
+Fullstack Engineer with 3 years experience building end-to-end web applications across React frontend and Node.js/Express backend microservices with MongoDB and TypeScript.
+
+SKILLS:
+- Frontend: React, TypeScript, JavaScript, Next.js, Redux, Tailwind CSS, HTML5/CSS3
+- Backend & APIs: Node.js, Express, REST API, Microservices, WebSocket
+- Databases & Tools: MongoDB, PostgreSQL, SQL, Docker, Git, Jest
+
+EXPERIENCE:
+Fullstack Developer | CloudSync Tech (2022 - Present)
+- Architected fullstack collaborative dashboard with React on frontend and Node.js Express on backend.
+- Implemented secure JWT authentication and REST API endpoints handling transactional state machines.`
     }
   ];
 

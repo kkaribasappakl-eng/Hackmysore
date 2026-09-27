@@ -139,9 +139,18 @@ export default function ReviewQueue() {
             const candidateName = raw.candidateName || raw.builder_name || raw.builderName || raw.candidate?.name || 'Engineering Candidate';
             const candidateAvatar = raw.candidateAvatar || (candidateName ? candidateName.split(' ').map(n=>n[0]).join('') : 'C');
             const challengeTitle = raw.challenge?.title || raw.challengeTitle || 'Backend Order Management API';
-            const integrityStatus = raw.integrity_status || raw.integrityStatus || 'PASSED';
-            const aiPreScore = raw.ai_analysis?.advisory_score || raw.ai_analysis?.reasoning_quality || raw.aiPreScore || 84;
             const assessmentScore = raw.assessment_score !== undefined && raw.assessment_score !== null ? raw.assessment_score : (raw.assessmentScore ?? 0);
+            const isZeroScore = Number(assessmentScore) === 0;
+            const integrityStatus = isZeroScore
+              ? 'FLAGGED (0% Incomplete)'
+              : (raw.integrity_status || raw.integrityStatus || 'PASSED');
+            const aiPreScore = isZeroScore
+              ? 0
+              : (raw.ai_analysis?.advisory_score !== undefined
+                  ? raw.ai_analysis.advisory_score
+                  : (raw.ai_analysis?.reasoning_quality !== undefined
+                      ? raw.ai_analysis.reasoning_quality
+                      : (raw.aiPreScore !== undefined ? raw.aiPreScore : 84)));
             const submittedAt = raw.submitted_at ? new Date(raw.submitted_at).toLocaleDateString() : (raw.submittedAt || 'Today');
             const skills = raw.skills || raw.challenge?.skills || raw.candidate?.skills || ['Java', 'SQL', 'REST API'];
             const status = raw.status || raw.review_status || 'SUBMITTED';
@@ -150,19 +159,19 @@ export default function ReviewQueue() {
             return (
               <div
                 key={id}
-                className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-purple-500/40 transition-all flex flex-col md:flex-row md:items-center justify-between gap-6"
+                className={`p-6 rounded-2xl bg-slate-900/80 border ${isZeroScore ? 'border-rose-900/40 hover:border-rose-500/40' : 'border-slate-800 hover:border-purple-500/40'} transition-all flex flex-col md:flex-row md:items-center justify-between gap-6`}
               >
                 {/* Candidate Info */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center justify-center font-bold font-mono text-base shrink-0">
+                    <div className={`w-11 h-11 rounded-xl ${isZeroScore ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'} border flex items-center justify-center font-bold font-mono text-base shrink-0`}>
                       {candidateAvatar}
                     </div>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-bold text-white">{candidateName}</h2>
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-                          {status}
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full ${isZeroScore ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'} font-medium`}>
+                          {isZeroScore ? 'ZERO SCORE / INCOMPLETE' : status}
                         </span>
                         {isMatched && (
                           <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1">
@@ -178,7 +187,7 @@ export default function ReviewQueue() {
 
                   {/* Skills, Assessment & Integrity Badges */}
                   <div className="flex flex-wrap items-center gap-2 pl-0 sm:pl-14">
-                    <span className="text-xs px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono font-medium">
+                    <span className={`text-xs px-2.5 py-0.5 rounded-md font-mono font-medium ${isZeroScore ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
                       Assessment: {assessmentScore}/100
                     </span>
                     <span className="text-slate-600">•</span>
@@ -191,8 +200,8 @@ export default function ReviewQueue() {
                       </span>
                     ))}
                     <span className="text-slate-600">•</span>
-                    <span className="text-xs text-emerald-400 font-mono flex items-center gap-1">
-                      <span>✓</span> {integrityStatus}
+                    <span className={`text-xs font-mono flex items-center gap-1 ${isZeroScore || integrityStatus.includes('FLAG') ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      <span>{isZeroScore || integrityStatus.includes('FLAG') ? '⚠' : '✓'}</span> {integrityStatus}
                     </span>
                   </div>
 
@@ -230,16 +239,16 @@ export default function ReviewQueue() {
                 <div className="flex items-center gap-6 border-t md:border-t-0 pt-4 md:pt-0 border-slate-800 justify-between md:justify-end">
                   <div className="text-right">
                     <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">AI Advisory (Ref Only)</div>
-                    <div className="text-2xl font-extrabold text-blue-400 font-mono">
+                    <div className={`text-2xl font-extrabold font-mono ${isZeroScore ? 'text-rose-400' : 'text-blue-400'}`}>
                       {aiPreScore} <span className="text-xs text-slate-500 font-normal">/ 100</span>
                     </div>
                   </div>
 
                   <Link
                     to={`/reviewer/review/${id}`}
-                    className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-md shadow-purple-600/20 transition-all flex items-center gap-2"
+                    className={`px-5 py-2.5 rounded-xl ${isZeroScore ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'} text-white font-semibold text-xs shadow-md transition-all flex items-center gap-2`}
                   >
-                    <span>Review Submission</span>
+                    <span>{isZeroScore ? 'Review Incomplete (0)' : 'Review Submission'}</span>
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>

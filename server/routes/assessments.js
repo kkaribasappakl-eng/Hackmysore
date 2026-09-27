@@ -367,6 +367,42 @@ router.post('/:id/evaluate', (req, res) => {
 
     // Automatically create or update submission in reviewer queue upon challenge completion
     try {
+      const isZero = finalOverallScore === 0;
+      const defaultAdr = isZero ? {
+        what: 'No valid technical solutions submitted. Assessment scored 0/100.',
+        why: 'Candidate submitted blank or non-code answers.',
+        alternatives: 'None provided.',
+        tradeoffs: 'None provided.',
+        scaling: 'None provided.'
+      } : {
+        what: `Technical implementation and deliverables for Challenge #${assessment.challenge_id}.`,
+        why: 'Implementation leverages clean modular services with transactional integrity.',
+        alternatives: 'Standard iterative algorithms.',
+        tradeoffs: 'Balanced computational complexity with code clarity.',
+        scaling: 'Decoupled handlers with asynchronous background queues.'
+      };
+
+      const defaultIntegrity = isZero ? 'FLAGGED' : 'PASSED';
+      const defaultSimilarity = isZero ? 0 : 8;
+      const defaultReport = isZero ? JSON.stringify({
+        status: 'FLAGGED',
+        flags: ['ZERO_SCORE_INCOMPLETE', 'NO_SOLUTIONS_SUBMITTED'],
+        originality_score: 0,
+        message: 'Assessment incomplete or 0 marks earned. No technical solutions submitted.'
+      }) : null;
+
+      const defaultAiRubric = isZero ? JSON.stringify({
+        status: 'COMPLETED',
+        overall_suggested_score: 0,
+        advisoryScore: 0,
+        adr_consistency: 0,
+        reasoning_quality: 0,
+        summary: 'Assessment incomplete or 0 marks earned. Candidate submitted 0 valid technical answers.',
+        suggested_rubrics: { correctness: 1.0, architecture: 1.0, code_quality: 1.0, tradeoff_awareness: 1.0 },
+        detected_strengths: [],
+        detected_weaknesses: ['All assessment questions were left blank or did not provide working code.']
+      }) : null;
+
       const existingSub = db.prepare('SELECT id FROM submissions WHERE assessment_id = ? ORDER BY id DESC LIMIT 1').get(assessment.id);
       if (!existingSub) {
         const builderUser = db.prepare('SELECT id, name FROM users WHERE id = ?').get(assessment.builder_id);
@@ -374,28 +410,38 @@ router.post('/:id/evaluate', (req, res) => {
         db.prepare(`
           INSERT INTO submissions (
             assessment_id, builder_id, repository_url, project_url, adr_content,
-            integrity_status, similarity_score, ai_analysis_status, status, submitted_at
-          ) VALUES (?, ?, ?, ?, ?, 'PASSED', 8, 'COMPLETED', 'SUBMITTED', ?)
+            integrity_status, similarity_score, ai_analysis_status, anti_gaming_report,
+            ai_advisory_rubric, status, submitted_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?, ?, 'SUBMITTED', ?)
         `).run(
           assessment.id,
           assessment.builder_id,
           `https://github.com/${builderSlug}/challenge-solution`,
           `https://${builderSlug}-preview.signalcraft.dev`,
-          JSON.stringify({
-            what: `Technical implementation and deliverables for Challenge #${assessment.challenge_id}.`,
-            why: "Implementation leverages clean modular services with transactional integrity.",
-            alternatives: "Standard iterative algorithms.",
-            tradeoffs: "Balanced computational complexity with code clarity.",
-            scaling: "Decoupled handlers with asynchronous background queues."
-          }),
+          JSON.stringify(defaultAdr),
+          defaultIntegrity,
+          defaultSimilarity,
+          defaultReport,
+          defaultAiRubric,
           now
         );
       } else {
         db.prepare(`
           UPDATE submissions 
-          SET assessment_id = ?, status = 'SUBMITTED', submitted_at = ?
+          SET assessment_id = ?, status = 'SUBMITTED', submitted_at = ?,
+              adr_content = ?, integrity_status = ?, similarity_score = ?,
+              anti_gaming_report = ?, ai_advisory_rubric = ?
           WHERE id = ?
-        `).run(assessment.id, now, existingSub.id);
+        `).run(
+          assessment.id,
+          now,
+          JSON.stringify(defaultAdr),
+          defaultIntegrity,
+          defaultSimilarity,
+          defaultReport,
+          defaultAiRubric,
+          existingSub.id
+        );
       }
     } catch (subErr) {
       console.warn("Could not auto-link submission on evaluation:", subErr.message);

@@ -92,10 +92,10 @@ export default function Assessment() {
         if (qRes.success && Array.isArray(qRes.data) && qRes.data.length > 0 && isMounted) {
           setQuestions(qRes.data);
 
-          // Initialize answers with defaults if any
+          // Initialize answers with defaults (e.g. buggy starter code for inspection/fixing)
           const initAnswers = {};
           qRes.data.forEach((q) => {
-            initAnswers[q.id] = '';
+            initAnswers[q.id] = q.starter_code || '';
           });
           setAnswers(initAnswers);
         } else if (isMounted) {
@@ -532,13 +532,13 @@ export default function Assessment() {
               </span>
             </div>
 
-            <h2 className="text-lg sm:text-xl font-bold text-white mt-4 leading-relaxed">
+            <h2 className="text-lg sm:text-xl font-bold text-white mt-4 leading-relaxed whitespace-pre-line">
               {currentQuestion.question_text}
             </h2>
           </div>
 
           {/* QUESTION TYPE SPECIFIC INPUT (Requirement 8) */}
-          <div className="space-y-3">
+          <div className="space-y-4">
             
             {/* 1. MCQ Radio Buttons */}
             {currentQuestion.question_type === 'MCQ' && (
@@ -570,12 +570,35 @@ export default function Assessment() {
               </div>
             )}
 
-            {/* 2. Coding (Large code/text editor-style textarea) */}
+            {/* 2. Coding (Large code/text editor-style textarea with starter buggy code inspection) */}
             {currentQuestion.question_type === 'CODING' && (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {currentQuestion.starter_code && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-amber-300 flex items-center gap-1.5 font-mono">
+                        <span>⚠️</span> Buggy Source Code (Find & Fix Bugs):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAnswerChange(currentQuestion.id, currentQuestion.starter_code)}
+                        className="text-[11px] font-mono px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 transition-colors flex items-center gap-1"
+                        title="Reload buggy code into editor below"
+                      >
+                        <span>⚡</span> Preload / Reset Code
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-slate-300">
+                      The code below contains intentional intermediate-level bugs. Inspect the code, find the errors, and submit your working corrected implementation in the editor:
+                    </div>
+                    <pre className="p-3.5 rounded-lg bg-slate-950/95 border border-slate-800 text-[11px] font-mono text-slate-200 overflow-x-auto max-h-64 leading-relaxed whitespace-pre selection:bg-amber-500/30">
+                      {currentQuestion.starter_code}
+                    </pre>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs">
                   <label htmlFor="coding-answer" className="font-mono text-slate-300 font-semibold flex items-center gap-1.5">
-                    <span>💻</span> Code Implementation (Java / REST):
+                    <span>💻</span> Code Fix & Solution ({currentQuestion.skill || 'Code'}):
                   </label>
                   <span className="text-slate-400 text-[11px] font-mono">Monospace Code Editor</span>
                 </div>
@@ -585,7 +608,7 @@ export default function Assessment() {
                   value={answers[currentQuestion.id] || ''}
                   onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
                   className="w-full p-4 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono text-xs text-slate-200 outline-none leading-relaxed transition-all resize-y"
-                  placeholder="// Implement your solution here&#10;@RestController&#10;@RequestMapping(&quot;/api/orders&quot;)&#10;public class OrderController { ... }"
+                  placeholder="// Fix the bugs and write your corrected code solution here..."
                 />
               </div>
             )}
@@ -610,9 +633,29 @@ export default function Assessment() {
               </div>
             )}
 
-            {/* 4. Debugging (Large explanation textarea) */}
+            {/* 4. Debugging (Large explanation textarea with optional code viewer) */}
             {currentQuestion.question_type === 'DEBUGGING' && (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {currentQuestion.starter_code && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-amber-300 flex items-center gap-1.5 font-mono">
+                        <span>🔍</span> Buggy Code to Inspect:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAnswerChange(currentQuestion.id, currentQuestion.starter_code)}
+                        className="text-[11px] font-mono px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 transition-colors flex items-center gap-1"
+                        title="Preload code into answer box"
+                      >
+                        <span>⚡</span> Preload Code
+                      </button>
+                    </div>
+                    <pre className="p-3.5 rounded-lg bg-slate-950/95 border border-slate-800 text-[11px] font-mono text-slate-200 overflow-x-auto max-h-64 leading-relaxed whitespace-pre selection:bg-amber-500/30">
+                      {currentQuestion.starter_code}
+                    </pre>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs">
                   <label htmlFor="debugging-answer" className="font-mono text-slate-300 font-semibold flex items-center gap-1.5">
                     <span>🔍</span> Bug Analysis & Fix Explanation:

@@ -154,6 +154,7 @@ export function initDB() {
       points INTEGER NOT NULL DEFAULT 20,
       skill TEXT NOT NULL,
       difficulty TEXT NOT NULL DEFAULT 'Intermediate',
+      starter_code TEXT,
       FOREIGN KEY (assessment_id) REFERENCES assessments(id) ON DELETE CASCADE
     );
 
@@ -217,6 +218,7 @@ export function initDB() {
   try { db.exec("ALTER TABLE reviews ADD COLUMN recommendation TEXT DEFAULT 'VERIFIED';"); } catch {}
   try { db.exec("ALTER TABLE submissions ADD COLUMN anti_gaming_report TEXT;"); } catch {}
   try { db.exec("ALTER TABLE submissions ADD COLUMN ai_advisory_rubric TEXT;"); } catch {}
+  try { db.exec("ALTER TABLE assessment_questions ADD COLUMN starter_code TEXT;"); } catch {}
 
   seedInitialData();
 
@@ -595,6 +597,71 @@ export function ensureDemoData() {
         now
       );
     }
+
+    // 7. Ensure All 5 Resume-Matched Intermediate Challenges exist
+    const challengeList = [
+      {
+        id: 1,
+        title: 'Backend Order Management API',
+        description: 'Review and fix an intermediate-level Java & Spring Boot Order REST API service containing concurrency race conditions, missing payload validations, and incorrect HTTP response statuses.',
+        domain: 'Backend Engineering',
+        difficulty: 'Intermediate',
+        skills: JSON.stringify(['Java', 'SQL', 'REST API', 'Spring Boot', 'Debugging']),
+        prerequisites: JSON.stringify(['Java 17+', 'Spring Boot Basics', 'SQL Concurrency', 'REST Semantics'])
+      },
+      {
+        id: 2,
+        title: 'Production API Debugging & Concurrency',
+        description: 'Pinpoint and resolve thread deadlocks, Hikari connection starvation, and query latency spikes in a high-volume financial ledger service.',
+        domain: 'Backend Engineering',
+        difficulty: 'Advanced',
+        skills: JSON.stringify(['Java', 'Debugging', 'Performance']),
+        prerequisites: JSON.stringify(['Java Concurrency', 'Database Locks', 'HikariCP'])
+      },
+      {
+        id: 3,
+        title: 'Frontend Dashboard & State Management',
+        description: 'Review and fix an intermediate-level React & WebSocket telemetry dashboard containing state mutations, stale closure memory leaks, and infinite re-render loops.',
+        domain: 'Frontend Engineering',
+        difficulty: 'Intermediate',
+        skills: JSON.stringify(['React', 'JavaScript', 'REST API', 'Tailwind CSS', 'Debugging']),
+        prerequisites: JSON.stringify(['React Hooks', 'State Immutability', 'WebSocket Lifecycle', 'Memoization'])
+      },
+      {
+        id: 4,
+        title: 'Python Data Pipeline & Microservice API',
+        description: 'Review and fix an intermediate-level Python & FastAPI data ingestion service with blocking event-loop operations, mutable default arguments, and Pandas data transformation bugs.',
+        domain: 'Machine Learning',
+        difficulty: 'Intermediate',
+        skills: JSON.stringify(['Python', 'FastAPI', 'Pandas', 'REST API', 'SQL', 'Debugging']),
+        prerequisites: JSON.stringify(['Python 3.11', 'AsyncIO Event Loops', 'FastAPI Routes', 'Pandas Aggregations'])
+      },
+      {
+        id: 5,
+        title: 'Fullstack Microservice & Event Platform',
+        description: 'Review and fix an intermediate-level Node.js, Express, and React fullstack ordering service with unhandled async promise rejections, header collisions, and inventory validation bugs.',
+        domain: 'Fullstack Engineering',
+        difficulty: 'Intermediate',
+        skills: JSON.stringify(['Node.js', 'Express', 'React', 'TypeScript', 'MongoDB', 'Debugging']),
+        prerequisites: JSON.stringify(['Node.js Event Loop', 'Express Middleware', 'React Lifecycle', 'Async/Await'])
+      }
+    ];
+
+    for (const c of challengeList) {
+      const existing = db.prepare('SELECT id FROM challenges WHERE id = ?').get(c.id);
+      if (existing) {
+        db.prepare(`
+          UPDATE challenges
+          SET title = ?, description = ?, domain = ?, difficulty = ?, skills = ?, prerequisites = ?
+          WHERE id = ?
+        `).run(c.title, c.description, c.domain, c.difficulty, c.skills, c.prerequisites, c.id);
+      } else {
+        db.prepare(`
+          INSERT INTO challenges (id, title, description, domain, difficulty, skills, prerequisites, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(c.id, c.title, c.description, c.domain, c.difficulty, c.skills, c.prerequisites, now);
+      }
+    }
   } catch (err) {
     console.error('Failed to ensure demo data:', err);
   }
@@ -658,32 +725,127 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
 
     const insertQ = db.prepare(`
       INSERT INTO assessment_questions (
-        assessment_id, question_type, question_text, options, correct_answer, points, skill, difficulty
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        assessment_id, question_type, question_text, options, correct_answer, points, skill, difficulty, starter_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     if (isPython) {
-      // Python Medium-Level Practical Assessment
+      // Python Medium-Level Practical Assessment (FastAPI, Pandas, AsyncIO)
+      const pythonBuggyCode = `from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
+from typing import List, Optional
+import pandas as pd
+import numpy as np
+
+app = FastAPI()
+
+class TelemetryRecord(BaseModel):
+    device_id: str
+    latency_ms: float
+    error_flag: bool
+
+# BUG 1: Mutable default argument seen_ids=set() persists state across ALL client requests!
+def compute_metrics(events: List[TelemetryRecord], seen_ids=set()):
+    unique_latencies = []
+    for e in events:
+        if e.device_id not in seen_ids:
+            seen_ids.add(e.device_id)
+            unique_latencies.append(e.latency_ms)
+
+    # BUG 2: ZeroDivisionError if all duplicates or empty list!
+    mean_val = sum(unique_latencies) / len(unique_latencies)
+    df = pd.DataFrame({"latency": unique_latencies})
+    p95 = float(np.percentile(df["latency"], 95))
+    return {"count": len(unique_latencies), "mean": round(mean_val, 2), "p95": round(p95, 2)}
+
+# BUG 3: Synchronous heavy CPU calculation in async route blocks the entire asyncio event loop!
+@app.post("/api/v1/telemetry/process", status_code=status.HTTP_200_OK) # BUG: should be 201 Created
+async def process_telemetry(payload: List[TelemetryRecord]):
+    # Heavy CPU computation runs on main loop thread, blocking 500 concurrent connections
+    result = compute_metrics(payload)
+    return result`;
+
       insertQ.run(
         assessmentId,
         'CODING',
-        'Implement an asynchronous FastAPI route handler `POST /api/v1/metrics/batch` in Python. It must parse a list of telemetry events, asynchronously filter out duplicate records using an in-memory set, compute aggregate statistics (min, max, and mean latency), and return HTTP 201 Created with a summary JSON response.',
+        `### Intermediate Python Coding Challenge: Fix Async FastAPI Batch Metrics Pipeline
+
+Review the provided intermediate-level Python FastAPI route handler below. It contains **3 deliberate production bugs**:
+1. **Event Loop Blocking**: Executes a synchronous, CPU-intensive Pandas/NumPy matrix transformation directly inside \`async def\` without \`asyncio.to_thread\` or an executor, completely freezing all concurrent request handling.
+2. **Mutable Default Argument**: \`def compute_metrics(events, seen_ids=set()):\` shares the mutable \`set\` across all incoming HTTP requests, creating data leaks between different users.
+3. **Unhandled Zero/Empty Division**: \`mean = total / count\` throws \`ZeroDivisionError\` when processing an empty or all-duplicate batch, crashing with HTTP 500 instead of returning HTTP 201 with zero-valued summary.
+
+**Task**: Identify the bugs, fix the code, and write the complete, corrected asynchronous FastAPI endpoint and metric calculation logic.
+
+\`\`\`python
+${pythonBuggyCode}
+\`\`\``,
         null,
-        'from fastapi import FastAPI, status\nfrom pydantic import BaseModel\nfrom typing import List\n\napp = FastAPI()\n\nclass Event(BaseModel):\n    id: str\n    latency_ms: float\n\n@app.post("/api/v1/metrics/batch", status_code=status.HTTP_201_CREATED)\nasync def process_batch(events: List[Event]):\n    seen, unique = set(), []\n    for e in events:\n        if e.id not in seen:\n            seen.add(e.id)\n            unique.append(e.latency_ms)\n    if not unique:\n        return {"count": 0, "min": 0, "max": 0, "mean": 0}\n    return {\n        "count": len(unique),\n        "min": min(unique),\n        "max": max(unique),\n        "mean": round(sum(unique) / len(unique), 2)\n    }',
+        `import asyncio
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
+from typing import List, Optional
+import pandas as pd
+import numpy as np
+
+app = FastAPI()
+
+class TelemetryRecord(BaseModel):
+    device_id: str
+    latency_ms: float
+    error_flag: bool
+
+def compute_metrics(events: List[TelemetryRecord], seen_ids: Optional[set] = None):
+    if seen_ids is None:
+        seen_ids = set()
+    unique_latencies = []
+    for e in events:
+        if e.device_id not in seen_ids:
+            seen_ids.add(e.device_id)
+            unique_latencies.append(e.latency_ms)
+
+    if not unique_latencies:
+        return {"count": 0, "mean": 0.0, "p95": 0.0}
+
+    mean_val = sum(unique_latencies) / len(unique_latencies)
+    df = pd.DataFrame({"latency": unique_latencies})
+    p95 = float(np.percentile(df["latency"], 95))
+    return {"count": len(unique_latencies), "mean": round(mean_val, 2), "p95": round(p95, 2)}
+
+@app.post("/api/v1/telemetry/process", status_code=status.HTTP_201_CREATED)
+async def process_telemetry(payload: List[TelemetryRecord]):
+    result = await asyncio.to_thread(compute_metrics, payload, None)
+    return result`,
         25,
         'Python',
-        'Intermediate'
+        'Intermediate',
+        pythonBuggyCode
       );
+
+      const pythonDebugCode = `@app.get("/analytics")
+async def get_analytics(payload: list[int]):
+    # Synchronous CPU-intensive matrix calculation blocks event loop!
+    res = heavy_cpu_matrix_transform(payload)
+    return {"result": res}`;
 
       insertQ.run(
         assessmentId,
         'DEBUGGING',
-        'Diagnose the latency and blocking bug in this Python asynchronous service under 200 concurrent requests:\n\n```python\n@app.get("/analytics")\nasync def get_analytics(payload: list[int]):\n    # Synchronous CPU-intensive matrix calculation\n    res = heavy_cpu_matrix_transform(payload)\n    return {"result": res}\n```\nExplain why `async def` does not prevent request blocking and provide the fix using `asyncio.to_thread` or an executor.',
+        `### Intermediate Python Debugging Challenge: Asynchronous Event Loop Block
+
+Diagnose the latency and blocking bug in this Python asynchronous service under 200 concurrent requests:
+
+\`\`\`python
+${pythonDebugCode}
+\`\`\`
+
+Explain why \`async def\` does not prevent request blocking and provide the fix using \`asyncio.to_thread\` or an executor.`,
         null,
         'Because asyncio runs on a single event loop thread, synchronous CPU-intensive operations block the entire loop and freeze all incoming concurrent connections. Fix by delegating the CPU-bound operation to a thread or process pool executor: `res = await asyncio.to_thread(heavy_cpu_matrix_transform, payload)` or using `loop.run_in_executor(None, heavy_cpu_matrix_transform, payload)`.',
         25,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        pythonDebugCode
       );
 
       insertQ.run(
@@ -694,7 +856,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'SELECT date(created_at) as log_date, COUNT(*) as total_requests, AVG(latency_ms) as avg_latency, SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as error_count FROM api_logs WHERE created_at >= date("now", "-14 days") GROUP BY log_date ORDER BY log_date ASC;',
         20,
         'SQL',
-        'Intermediate'
+        'Intermediate',
+        '-- Write SQL query to calculate daily avg response time and error count\nSELECT date(created_at) as log_date, ...'
       );
 
       insertQ.run(
@@ -705,7 +868,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Asyncio excels at high-concurrency I/O-bound workflows (network, database, HTTP) with minimal memory footprint per connection. However, due to Python Global Interpreter Lock (GIL), CPU-bound tasks saturate a single thread and block the event loop. Multi-process architectures like Gunicorn fork independent Python processes across multiple CPU cores, bypassing GIL contention at the cost of higher per-process memory consumption.',
         15,
         'Problem Solving',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
       insertQ.run(
@@ -721,35 +885,154 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Generator expressions compute items lazily on demand using minimal memory, whereas list comprehensions eagerly allocate the entire list in memory',
         15,
         'Python',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
     } else if (isFrontend) {
-      // 1. Coding Task (React / UI Components)
+      // Frontend Medium-Level Practical Assessment (React, Hooks, WebSockets)
+      const reactBuggyCode = `import React, { useState, useEffect, useMemo } from 'react';
+
+export default function LiveOrderFeed({ socketUrl }) {
+  const [orders, setOrders] = useState([]);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const ws = new WebSocket(socketUrl);
+    ws.onopen = () => setConnected(true);
+
+    // BUG 1: Direct state mutation! orders.push does not trigger re-render in React
+    ws.onmessage = (event) => {
+      const newOrder = JSON.parse(event.data);
+      orders.push(newOrder); // Direct mutation!
+      setOrders(orders);     // Same reference, React skips render
+    };
+
+    // BUG 2: Missing ws.close() cleanup function, leaking open connections!
+  }, [orders]); // BUG 2: Depending on orders creates an infinite reconnection loop!
+
+  // BUG 3: Crashes if orders is empty or elements lack amount
+  const totalVolume = orders.reduce((sum, o) => sum + o.amount, 0);
+
+  return (
+    <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 text-white">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-bold">Live Stream ({orders.length} orders)</h2>
+        <span className={connected ? "text-emerald-400" : "text-amber-400"}>
+          {connected ? "● Connected" : "○ Connecting"}
+        </span>
+      </div>
+      <div className="text-xl font-mono mb-4">Total Volume: \${totalVolume.toFixed(2)}</div>
+      <ul className="space-y-2 max-h-60 overflow-y-auto">
+        {orders.slice(-5).map((order) => (
+          <li key={order.id} className="p-2 bg-slate-800 rounded font-mono text-xs">
+            #{order.id} - \${order.amount} ({order.status})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}`;
+
       insertQ.run(
         assessmentId,
         'CODING',
-        'Implement an interactive analytics metric card component in React. It must accept a live `feedData` prop, compute average throughput using `useMemo`, display a loading spinner when data is empty, handle an error boundary, and provide a refresh button triggering an `onRefresh` callback.',
+        `### Intermediate React Coding Challenge: Fix Live Orders & Metrics Dashboard
+
+Review the provided intermediate-level React component below. It contains **3 deliberate production bugs**:
+1. **Direct State Mutation**: Mutates \`orders\` directly using \`orders.push(data)\` instead of creating a new array reference with functional state updates (\`setOrders(prev => [...prev, data])\`), breaking React re-renders.
+2. **Stale Closure & WebSocket Connection Leak in \`useEffect\`**: The effect hook depends on \`[orders]\` without a cleanup function (\`ws.close()\`), triggering new socket connections on every message and causing a memory leak.
+3. **Missing Loading / Empty State Boundary**: Directly computes summary metrics without checking for null/empty feed data, triggering \`TypeError: Cannot read properties of undefined\`.
+
+**Task**: Identify the bugs, fix the code, and provide the fully corrected React component using \`useMemo\`, proper cleanup, and safe state updates.
+
+\`\`\`jsx
+${reactBuggyCode}
+\`\`\``,
         null,
-        'export function MetricCard({ feedData, loading, onRefresh }) { const avg = useMemo(() => feedData?.length ? (feedData.reduce((a, b) => a + b.value, 0) / feedData.length).toFixed(1) : 0, [feedData]); if (loading) return <Spinner />; return <div className="metric-card"><h3>Average Throughput: {avg} req/s</h3><button onClick={onRefresh}>Refresh</button></div>; }',
+        `import React, { useState, useEffect, useMemo } from 'react';
+
+export default function LiveOrderFeed({ socketUrl }) {
+  const [orders, setOrders] = useState([]);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    if (!socketUrl) return;
+    const ws = new WebSocket(socketUrl);
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
+
+    ws.onmessage = (event) => {
+      try {
+        const newOrder = JSON.parse(event.data);
+        setOrders(prev => [...prev.slice(-99), newOrder]);
+      } catch (err) {
+        console.error("Malformed feed message", err);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [socketUrl]);
+
+  const totalVolume = useMemo(() => {
+    if (!Array.isArray(orders) || orders.length === 0) return 0;
+    return orders.reduce((sum, o) => sum + (Number(o?.amount) || 0), 0);
+  }, [orders]);
+
+  return (
+    <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 text-white">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-bold">Live Stream ({orders.length} orders)</h2>
+        <span className={connected ? "text-emerald-400" : "text-amber-400"}>
+          {connected ? "● Connected" : "○ Connecting"}
+        </span>
+      </div>
+      <div className="text-xl font-mono mb-4">Total Volume: \${totalVolume.toFixed(2)}</div>
+      <ul className="space-y-2 max-h-60 overflow-y-auto">
+        {orders.slice(-5).map((order) => (
+          <li key={order.id || Math.random()} className="p-2 bg-slate-800 rounded font-mono text-xs">
+            #{order.id} - \${order.amount} ({order.status || 'PROCESSED'})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}`,
         25,
         'React',
-        'Intermediate'
+        'Intermediate',
+        reactBuggyCode
       );
 
-      // 2. Debugging Task (React State & Re-render Loop)
+      const reactDebugCode = `function useLiveFeed(socketUrl) {
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    const ws = new WebSocket(socketUrl);
+    ws.onmessage = (msg) => setEvents([...events, JSON.parse(msg.data)]);
+  }, [events]); // BUG: Depending on events creates infinite reconnect loop!
+  return events;
+}`;
+
       insertQ.run(
         assessmentId,
         'DEBUGGING',
-        'Identify the memory leak and infinite re-render loop in this React dashboard hook snippet and explain how you would resolve it:\n\n```jsx\nfunction useLiveFeed(socketUrl) {\n  const [events, setEvents] = useState([]);\n  useEffect(() => {\n    const ws = new WebSocket(socketUrl);\n    ws.onmessage = (msg) => setEvents([...events, JSON.parse(msg.data)]);\n  }, [events]);\n  return events;\n}\n```',
+        `### Intermediate React Debugging Challenge: Infinite Re-render Loop & Memory Leak
+
+Identify the memory leak and infinite re-render loop in this React dashboard hook snippet and explain how you would resolve it:
+
+\`\`\`jsx
+${reactDebugCode}
+\`\`\``,
         null,
         'Two major bugs: 1) Dependency array includes `events`, causing the WebSocket connection to disconnect and reconnect on every single incoming message. 2) No cleanup function closing `ws.close()`. Fix by using functional state updater `setEvents(prev => [...prev, JSON.parse(msg.data)])` and changing the dependency array to `[socketUrl]`, plus returning a cleanup `return () => ws.close();`.',
         25,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        reactDebugCode
       );
 
-      // 3. State Management / Data Task (JavaScript / REST API)
       insertQ.run(
         assessmentId,
         'SQL',
@@ -758,10 +1041,10 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'function aggregateTelemetry(events) { const total = events.length; const errors = events.filter(e => e.status >= 400).length; const errorRate = total ? (errors / total) * 100 : 0; const byEndpoint = {}; events.forEach(e => { (byEndpoint[e.endpoint] = byEndpoint[e.endpoint] || []).push(e.latencyMs); }); const slowest = Object.entries(byEndpoint).map(([ep, latencies]) => ({ endpoint: ep, p95: latencies.sort((a,b)=>a-b)[Math.floor(latencies.length * 0.95)] || 0 })).sort((a,b)=>b.p95 - a.p95).slice(0, 3); return { total, errorRate, slowest }; }',
         20,
         'JavaScript',
-        'Intermediate'
+        'Intermediate',
+        'function aggregateTelemetry(events) {\n  // Transform raw telemetry events into summary\n}'
       );
 
-      // 4. Architecture Reasoning Task (State & Rendering Trade-offs)
       insertQ.run(
         assessmentId,
         'REASONING',
@@ -770,10 +1053,10 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'React Context triggers full-tree re-renders for all consumer components on every update, causing serious frame drops under 50 events/sec. An external store with selector subscriptions (like Zustand) allows individual widgets to subscribe only to their specific slice of state. Additionally, batching updates with requestAnimationFrame or throttling state commits to 60fps preserves smooth 60Hz UI rendering without CPU saturation.',
         15,
         'Problem Solving',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
-      // 5. MCQ Task (React Performance Optimization)
       insertQ.run(
         assessmentId,
         'MCQ',
@@ -787,31 +1070,129 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Wrap the chart component with React.memo() and pass memoized props via useMemo/useCallback',
         15,
         'React',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
     } else if (isNode) {
-      // Node.js & JavaScript Medium-Level Practical Assessment
+      // Node.js & JavaScript Medium-Level Practical Assessment (Express, Async, MongoDB)
+      const nodeBuggyCode = `import express from 'express';
+const router = express.Router();
+
+// BUG 1: Missing try/catch or async wrapper allows unhandled promise rejections to crash Node!
+router.post('/orders', async (req, res, next) => {
+  const { customerId, items } = req.body;
+
+  // BUG 2: Missing return statement! Code continues executing and throws ERR_HTTP_HEADERS_SENT!
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ error: 'Order must contain at least one item' });
+  }
+
+  // BUG 3: No validation on negative quantities or price tampering!
+  let totalAmount = 0;
+  for (const item of items) {
+    totalAmount += item.price * item.quantity;
+  }
+
+  const newOrder = await orderDatabase.create({
+    customerId,
+    items,
+    totalAmount,
+    status: 'PENDING',
+    createdAt: new Date()
+  });
+
+  // BUG 4: Returns 200 instead of 201 Created
+  res.status(200).json(newOrder);
+});
+
+export default router;`;
+
       insertQ.run(
         assessmentId,
         'CODING',
-        'Implement an Express.js middleware and route handler `POST /api/orders` in Node.js. It must validate that `items` array is non-empty, compute the total price, handle errors asynchronously using `try/catch` with `next(err)`, and return HTTP 201 Created with the created order object.',
+        `### Intermediate Fullstack Coding Challenge: Fix Express.js Order Router & Middleware
+
+Review the provided intermediate-level Node.js / Express.js router below. It contains **3 deliberate production bugs**:
+1. **Missing \`return\` on Validation Failure**: \`res.status(400).json(...)\` does not return, allowing execution to fall through into database insertion and causing \`Error [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client\`.
+2. **Unhandled Promise Rejections in Async Handler**: Async route lacks \`try/catch\` or an async error wrapper, causing unhandled promise rejections to crash the Node process under database disconnections.
+3. **Negative Quantity & Missing Price Boundary Checks**: Does not validate that \`quantity > 0\` and \`price >= 0\`, enabling malicious clients to submit negative order amounts and drain store balances.
+
+**Task**: Identify the bugs, fix the code, and write the complete, corrected, robust Express.js router with transactional integrity and proper error propagation.
+
+\`\`\`javascript
+${nodeBuggyCode}
+\`\`\``,
         null,
-        'import express from "express";\nconst router = express.Router();\nrouter.post("/api/orders", async (req, res, next) => {\n  try {\n    const { items, customerId } = req.body;\n    if (!items || !Array.isArray(items) || items.length === 0) {\n      return res.status(400).json({ error: "Non-empty items array is required" });\n    }\n    const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);\n    const order = await orderService.create({ customerId, items, total, status: "PENDING" });\n    res.status(201).json(order);\n  } catch (err) {\n    next(err);\n  }\n});',
+        `import express from 'express';
+const router = express.Router();
+
+router.post('/orders', async (req, res, next) => {
+  try {
+    const { customerId, items } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({ error: 'customerId is required' });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Order must contain at least one item' });
+    }
+
+    for (const item of items) {
+      if (!item.productId || typeof item.quantity !== 'number' || item.quantity <= 0 || typeof item.price !== 'number' || item.price < 0) {
+        return res.status(400).json({ error: 'Each item must have a valid productId, positive quantity, and non-negative price' });
+      }
+    }
+
+    const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    const newOrder = await orderDatabase.create({
+      customerId,
+      items,
+      totalAmount,
+      status: 'CONFIRMED',
+      createdAt: new Date()
+    });
+
+    return res.status(201).json(newOrder);
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;`,
         25,
         'JavaScript',
-        'Intermediate'
+        'Intermediate',
+        nodeBuggyCode
       );
+
+      const nodeDebugCode = `app.get("/data", async (req, res) => {
+  // Synchronous file read blocks the single-threaded Node.js event loop
+  const raw = fs.readFileSync("./large-catalog.json", "utf-8");
+  const parsed = JSON.parse(raw);
+  res.json({ count: parsed.length });
+});`;
 
       insertQ.run(
         assessmentId,
         'DEBUGGING',
-        'Diagnose the latency issue in this Node.js endpoint where event loop lag climbs under 500 concurrent connections:\n\n```javascript\napp.get("/data", async (req, res) => {\n  const raw = fs.readFileSync("./large-catalog.json", "utf-8");\n  const parsed = JSON.parse(raw);\n  res.json({ count: parsed.length });\n});\n```\nExplain why `fs.readFileSync` blocks the single-threaded Node.js event loop and provide the non-blocking asynchronous streaming or cached solution.',
+        `### Intermediate Node.js Debugging Challenge: Event Loop Latency Spike
+
+Diagnose the latency issue in this Node.js endpoint where event loop lag climbs under 500 concurrent connections:
+
+\`\`\`javascript
+${nodeDebugCode}
+\`\`\`
+
+Explain why \`fs.readFileSync\` blocks the single-threaded Node.js event loop and provide the non-blocking asynchronous streaming or cached solution.`,
         null,
         'Synchronous file I/O `fs.readFileSync` completely blocks the single JavaScript main thread on the event loop, pausing all concurrent HTTP request processing and socket I/O. Fix by using asynchronous promises `fs.promises.readFile` with memory caching, or streaming via `fs.createReadStream` piped to JSON stream parsers.',
         25,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        nodeDebugCode
       );
 
       insertQ.run(
@@ -822,7 +1203,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'SELECT c.name as customer_name, COUNT(o.id) as total_orders, SUM(o.total_amount) as total_spent FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = "COMPLETED" GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 5;',
         20,
         'SQL',
-        'Intermediate'
+        'Intermediate',
+        '-- Write SQL query to find top 5 customers by spend\nSELECT c.name ...'
       );
 
       insertQ.run(
@@ -833,7 +1215,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'REST provides straightforward HTTP caching, predictable network boundaries, and established status code semantics, but can suffer from over-fetching or under-fetching. GraphQL eliminates over-fetching by letting clients request precise fields, but complicates HTTP-layer caching and introduces N+1 query vulnerability. In Node.js, streams handle backpressure via the `.pipe()` method or `pipeline()`, pausing the readable stream when the downstream writable stream buffer is full.',
         15,
         'Problem Solving',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
       insertQ.run(
@@ -849,31 +1232,77 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         '`process.nextTick` callbacks run immediately after the current operation finishes, before Promise microtasks and before advancing the event loop phase',
         15,
         'JavaScript',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
     } else if (isGo) {
       // Go Systems Practical Assessment
+      const goBuggyCode = `type SafeCache struct {
+    mu sync.RWMutex
+    store map[string]interface{}
+}
+
+func (c *SafeCache) Set(k string, v interface{}) {
+    // BUG: Missing mu.Lock() causes concurrent map read/write runtime crash!
+    c.store[k] = v
+}
+
+func (c *SafeCache) Get(k string) (interface{}, bool) {
+    // BUG: Missing mu.RLock() causes fatal data race!
+    val, ok := c.store[k]
+    return val, ok
+}`;
+
       insertQ.run(
         assessmentId,
         'CODING',
-        'Implement a thread-safe in-memory cache in Go with `Set(key string, val interface{})` and `Get(key string) (interface{}, bool)` using `sync.RWMutex` to prevent concurrent map read/write panics.',
+        `### Intermediate Go Coding Challenge: Fix Thread-Safe In-Memory Cache
+
+Review the provided Go cache struct below. It contains **2 deliberate concurrency bugs**:
+1. \`Set\` writes to the underlying map without acquiring an exclusive write lock (\`c.mu.Lock()\`), causing a fatal runtime panic under concurrent writes: \`fatal error: concurrent map writes\`.
+2. \`Get\` reads from the map without a shared read lock (\`c.mu.RLock()\`), resulting in data races.
+
+**Task**: Fix the implementation to make it strictly thread-safe using \`sync.RWMutex\`.
+
+\`\`\`go
+${goBuggyCode}
+\`\`\``,
         null,
         'type SafeCache struct { mu sync.RWMutex; store map[string]interface{} }\nfunc NewCache() *SafeCache { return &SafeCache{store: make(map[string]interface{})} }\nfunc (c *SafeCache) Set(k string, v interface{}) { c.mu.Lock(); defer c.mu.Unlock(); c.store[k] = v }\nfunc (c *SafeCache) Get(k string) (interface{}, bool) { c.mu.RLock(); defer c.mu.RUnlock(); val, ok := c.store[k]; return val, ok }',
         25,
         'Go',
-        'Intermediate'
+        'Intermediate',
+        goBuggyCode
       );
+
+      const goDebugCode = `func queryService(ctx context.Context) string {
+    ch := make(chan string) // BUG: Unbuffered channel leaks worker goroutine on context timeout!
+    go func() { ch <- fetchRemote() }()
+    select {
+    case res := <-ch: return res
+    case <-ctx.Done(): return "timeout"
+    }
+}`;
 
       insertQ.run(
         assessmentId,
         'DEBUGGING',
-        'Identify the goroutine leak in this Go snippet where worker goroutines block indefinitely when client context times out:\n\n```go\nfunc queryService(ctx context.Context) string {\n    ch := make(chan string)\n    go func() { ch <- fetchRemote() }()\n    select {\n    case res := <-ch: return res\n    case <-ctx.Done(): return "timeout"\n    }\n}\n```\nExplain root cause and provide the fix using a buffered channel.',
+        `### Intermediate Go Debugging Challenge: Goroutine Leak on Context Timeout
+
+Identify the goroutine leak in this Go snippet where worker goroutines block indefinitely when client context times out:
+
+\`\`\`go
+${goDebugCode}
+\`\`\`
+
+Explain root cause and provide the fix using a buffered channel.`,
         null,
         'Because `ch` is an unbuffered channel (`make(chan string)`), when `ctx.Done()` fires first, the receiving select exits. The worker goroutine attempting `ch <- fetchRemote()` blocks forever waiting for a receiver, leaking goroutines. Fix by creating a buffered channel `ch := make(chan string, 1)` so the goroutine can write and exit without blocking.',
         25,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        goDebugCode
       );
 
       insertQ.run(
@@ -884,7 +1313,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'SELECT endpoint, COUNT(*) as req_count, AVG(latency_ms) as avg_latency FROM api_logs WHERE created_at >= datetime("now", "-24 hours") GROUP BY endpoint ORDER BY avg_latency DESC LIMIT 5;',
         20,
         'SQL',
-        'Intermediate'
+        'Intermediate',
+        'SELECT endpoint, ...'
       );
 
       insertQ.run(
@@ -895,7 +1325,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Goroutines are user-space threads with small 2KB stack frames that grow dynamically, whereas OS threads require 1MB+ and involve kernel context switches. Go uses an M:N work-stealing scheduler where M goroutines run across N OS threads. When a goroutine blocks on a network socket, the runtime suspends it without blocking the underlying OS thread, allowing other goroutines to execute seamlessly.',
         15,
         'Problem Solving',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
       insertQ.run(
@@ -911,31 +1342,75 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'A runtime panic is triggered: "send on closed channel"',
         15,
         'Go',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
     } else if (isDebugging) {
-      // High-volume Debugging & Performance Tasks (Intermediate)
+      // High-volume Debugging & Performance Tasks (Intermediate / Advanced)
+      const rateLimiterBuggyCode = `class TokenBucketRateLimiter {
+    private long capacity;
+    private long tokens; // BUG: Non-atomic primitive causes race conditions under concurrent threads!
+
+    public TokenBucketRateLimiter(long capacity) {
+        this.capacity = capacity;
+        this.tokens = capacity;
+    }
+
+    // BUG: Non-thread-safe check-then-decrement allows multiple threads to bypass the limit!
+    public boolean allowRequest() {
+        if (tokens > 0) {
+            tokens--;
+            return true;
+        }
+        return false;
+    }
+}`;
+
       insertQ.run(
         assessmentId,
         'CODING',
-        'Implement an in-memory Rate Limiter token-bucket class in Java or TypeScript that enforces 100 requests per minute per IP address, with thread-safe atomic token replenishment and non-blocking rejection.',
+        `### Intermediate Java Coding Challenge: Fix Thread-Safe Token Bucket Rate Limiter
+
+Review the Java class below. It contains **2 deliberate concurrency bugs**:
+1. **Thread Contention / Non-Atomic State**: Uses primitive \`long tokens\` without synchronization or \`AtomicLong\`, causing race conditions and lost decrements.
+2. **Missing Refill Timing**: Has no replenishment timestamp calculation, permanently depleting after initial tokens are consumed.
+
+**Task**: Fix the implementation to make it thread-safe and non-blocking using \`AtomicLong\` and atomic token replenishment.
+
+\`\`\`java
+${rateLimiterBuggyCode}
+\`\`\``,
         null,
         'class TokenBucketRateLimiter { private final long capacity; private final AtomicLong tokens; private final AtomicLong lastRefill; public TokenBucketRateLimiter(long capacity) { this.capacity = capacity; this.tokens = new AtomicLong(capacity); this.lastRefill = new AtomicLong(System.currentTimeMillis()); } public boolean allowRequest() { refill(); return tokens.getAndUpdate(t -> t > 0 ? t - 1 : 0) > 0; } }',
         25,
         'Performance',
-        'Intermediate'
+        'Intermediate',
+        rateLimiterBuggyCode
       );
+
+      const hikariBuggyCode = `hikari.maximumPoolSize=10
+hikari.connectionTimeout=30000
+hikari.leakDetectionThreshold=2000`;
 
       insertQ.run(
         assessmentId,
         'DEBUGGING',
-        'Diagnose the latency spike in this database connection pool configuration where threads enter TIMED_WAITING under 5,000 concurrent requests:\n\n```properties\nhikari.maximumPoolSize=10\nhikari.connectionTimeout=30000\nhikari.leakDetectionThreshold=2000\n```\nExplain root cause and optimal configuration adjustments.',
+        `### Intermediate Java Debugging Challenge: Connection Pool Starvation Under 5k RPS
+
+Diagnose the latency spike in this database connection pool configuration where threads enter TIMED_WAITING under 5,000 concurrent requests:
+
+\`\`\`properties
+${hikariBuggyCode}
+\`\`\`
+
+Explain root cause and optimal configuration adjustments.`,
         null,
         'Connection starvation caused by pool size of 10 being heavily undersized for 5000 concurrent requests with long transactions. Threads queue up and time out after 30 seconds. Solution: Increase Hikari pool size based on CPU cores * 2 + effective spindle count (e.g. 30-50), reduce transaction hold times, and add read-replicas.',
         25,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        hikariBuggyCode
       );
 
       insertQ.run(
@@ -946,7 +1421,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'SELECT strftime("%Y-%m-%d %H:00:00", created_at) as hour, COUNT(*) as tx_count, AVG(execution_time_ms) as avg_time FROM transactions WHERE tenant_id = ? AND created_at >= datetime("now", "-24 hours") GROUP BY hour ORDER BY hour ASC;',
         20,
         'SQL',
-        'Intermediate'
+        'Intermediate',
+        'SELECT strftime("%Y-%m-%d %H:00:00", created_at) as hour, ...'
       );
 
       insertQ.run(
@@ -957,7 +1433,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Distributed tracing provides causal request context across network hops with span timings, isolating the specific bottleneck service. Log aggregation provides verbose localized details but lacks unified request DAG visualization and suffers high storage costs under heavy traffic.',
         15,
         'Problem Solving',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
       insertQ.run(
@@ -973,31 +1450,142 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Circuit Breaker pattern with graceful fallback or degraded response',
         15,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
     } else {
-      // Standard Backend Engineering Tasks (Java, Spring Boot, SQL, REST API) - Medium Level
+      // Standard Backend Engineering Tasks (Java, Spring Boot, SQL, REST API) - Intermediate Level
+      const javaBuggyCode = `@RestController
+@RequestMapping("/api/v1/orders")
+public class OrderController {
+    @Autowired private OrderService orderService;
+
+    // BUG 1: Missing @RequestBody and @Valid annotations; returns 200 instead of 201 Created
+    @PostMapping
+    public ResponseEntity<Order> placeOrder(OrderRequest request) {
+        Order order = orderService.processOrder(request);
+        return ResponseEntity.ok(order);
+    }
+}
+
+@Service
+public class OrderService {
+    @Autowired private ProductRepository productRepo;
+    @Autowired private OrderRepository orderRepo;
+
+    // BUG 2: Race condition! Non-atomic check-then-act allows concurrent requests to oversell stock
+    @Transactional
+    public Order processOrder(OrderRequest req) {
+        Product product = productRepo.findById(req.getProductId())
+            .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        if (product.getStock() >= req.getQuantity()) {
+            product.setStock(product.getStock() - req.getQuantity());
+            productRepo.save(product);
+
+            Order order = new Order();
+            order.setCustomerId(req.getCustomerId());
+            order.setProductId(req.getProductId());
+            order.setQuantity(req.getQuantity());
+            order.setStatus(OrderStatus.CONFIRMED);
+            return orderRepo.save(order);
+        }
+        throw new InsufficientStockException("Out of stock");
+    }
+}`;
+
       insertQ.run(
         assessmentId,
         'CODING',
-        'Implement an API endpoint in Java/Spring Boot that creates a new order. It must validate order items, calculate the total amount, verify inventory availability, and return a 201 Created status with the newly created Order response body.',
+        `### Intermediate Java Coding Challenge: Fix Order Processing Service & Controller
+
+Review the provided intermediate-level Java Spring Boot service below. It contains **3 deliberate production bugs**:
+1. **Missing \`@RequestBody\` / \`@Valid\` annotations**: Incoming JSON payloads are not bound or validated, causing null pointer exceptions.
+2. **Concurrency Race Condition**: Inventory check-and-decrement (\`product.getStock() >= quantity\` followed by \`product.setStock(...)\`) lacks pessimistic locking (\`SELECT ... FOR UPDATE\`), causing overselling and negative inventory under concurrent checkout requests.
+3. **Incorrect HTTP Response Status**: The controller returns \`200 OK\` with an empty or improperly formatted response instead of \`201 Created\` with the persisted order details.
+
+**Task**: Identify the bugs, fix the code, and write the complete, corrected, thread-safe Spring Boot controller and service implementation below.
+
+\`\`\`java
+${javaBuggyCode}
+\`\`\``,
         null,
-        '@PostMapping("/api/orders") public ResponseEntity<Order> createOrder(@Valid @RequestBody OrderRequest req) { Order created = orderService.createOrder(req); return ResponseEntity.status(HttpStatus.CREATED).body(created); }',
+        `@RestController
+@RequestMapping("/api/v1/orders")
+public class OrderController {
+    @Autowired private OrderService orderService;
+
+    @PostMapping
+    public ResponseEntity<Order> placeOrder(@Valid @RequestBody OrderRequest request) {
+        Order order = orderService.processOrder(request);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+            .path("/{id}").buildAndExpand(order.getId()).toUri();
+        return ResponseEntity.created(location).body(order);
+    }
+}
+
+@Service
+public class OrderService {
+    @Autowired private ProductRepository productRepo;
+    @Autowired private OrderRepository orderRepo;
+
+    @Transactional
+    public Order processOrder(OrderRequest req) {
+        Product product = productRepo.findByIdWithLock(req.getProductId())
+            .orElseThrow(() -> new ResourceNotFoundException("Product " + req.getProductId() + " not found"));
+
+        if (product.getStock() < req.getQuantity()) {
+            throw new InsufficientStockException("Requested quantity exceeds available stock");
+        }
+
+        product.setStock(product.getStock() - req.getQuantity());
+        productRepo.save(product);
+
+        Order order = new Order();
+        order.setCustomerId(req.getCustomerId());
+        order.setProductId(req.getProductId());
+        order.setQuantity(req.getQuantity());
+        order.setStatus(OrderStatus.CONFIRMED);
+        return orderRepo.save(order);
+    }
+}`,
         25,
         'Java',
-        'Intermediate'
+        'Intermediate',
+        javaBuggyCode
       );
+
+      const javaDebugCode = `@Transactional
+public OrderResult placeOrder(Long productId, int quantity) {
+    Product product = productRepository.findById(productId).orElseThrow();
+    // Non-atomic check-then-act without row-level write locks causes overselling!
+    if (product.getStock() >= quantity) {
+        product.setStock(product.getStock() - quantity);
+        productRepository.save(product);
+        return OrderResult.success();
+    }
+    return OrderResult.outOfStock();
+}`;
 
       insertQ.run(
         assessmentId,
         'DEBUGGING',
-        'Identify the issue in this backend concurrent order service snippet and explain how you would fix it. Two simultaneous requests for the last available inventory item both succeed, resulting in negative inventory:\n\n```java\n@Transactional\npublic OrderResult placeOrder(Long productId, int quantity) {\n    Product product = productRepository.findById(productId).orElseThrow();\n    if (product.getStock() >= quantity) {\n        product.setStock(product.getStock() - quantity);\n        productRepository.save(product);\n        return OrderResult.success();\n    }\n    return OrderResult.outOfStock();\n}\n```',
+        `### Intermediate Java Debugging Challenge: Concurrent Stock Race Condition
+
+Identify the issue in this backend concurrent order service snippet and explain how you would fix it. Two simultaneous requests for the last available inventory item both succeed, resulting in negative inventory:
+
+\`\`\`java
+${javaDebugCode}
+\`\`\`
+
+Explain why the race condition occurs under transaction isolation levels and provide the fix using pessimistic write locks (\`PessimisticLockType.PESSIMISTIC_WRITE\`) or atomic database decrements.`,
         null,
         'Race condition / lost update caused by non-atomic check-then-act. Fix by using SELECT ... FOR UPDATE (pessimistic write locking) or atomic database decrement: UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?.',
         25,
         'Debugging',
-        'Intermediate'
+        'Intermediate',
+        javaDebugCode
       );
 
       insertQ.run(
@@ -1008,7 +1596,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'SELECT c.name as customer_name, COUNT(o.id) as total_orders, SUM(o.total_amount) as total_spent FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = "COMPLETED" GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 5;',
         20,
         'SQL',
-        'Intermediate'
+        'Intermediate',
+        'SELECT c.name as customer_name, ...'
       );
 
       insertQ.run(
@@ -1019,7 +1608,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Synchronous REST provides immediate feedback and predictable ACID consistency for order creation, but couples client latency. Asynchronous message queuing (e.g. Kafka outbox) decouples downstream fulfillment and prevents catastrophic backpressure, but introduces eventual consistency and requires idempotent retry handlers.',
         15,
         'Problem Solving',
-        'Intermediate'
+        'Intermediate',
+        null
       );
 
       insertQ.run(
@@ -1035,7 +1625,8 @@ export function seedQuestionsForAssessment(assessmentId, challengeId = 1, skills
         'Idempotency-Key header returning 200 OK with cached original response payload',
         15,
         'REST API',
-        'Intermediate'
+        'Intermediate',
+        null
       );
     }
   } catch (err) {

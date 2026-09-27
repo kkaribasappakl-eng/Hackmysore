@@ -130,7 +130,7 @@ router.get('/:id/questions', (req, res) => {
     seedQuestionsForAssessment(assessment.id, assessment.challenge_id);
 
     const questions = db.prepare(`
-      SELECT id, assessment_id, question_type, question_text, options, points, skill, difficulty
+      SELECT id, assessment_id, question_type, question_text, options, points, skill, difficulty, starter_code
       FROM assessment_questions
       WHERE assessment_id = ?
       ORDER BY id ASC
@@ -145,7 +145,8 @@ router.get('/:id/questions', (req, res) => {
       options: q.options ? JSON.parse(q.options) : null,
       points: q.points,
       skill: q.skill,
-      difficulty: q.difficulty
+      difficulty: q.difficulty,
+      starter_code: q.starter_code || null
     }));
 
     return res.status(200).json({
